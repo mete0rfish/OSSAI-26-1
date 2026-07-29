@@ -1,0 +1,34 @@
+artifact_schema_version: 2
+
+paths:
+  case_authoring: data/cases/week-01-aihub.yaml
+  cases: local-data/aihub/cases.jsonl
+  prompt: prompts/pdf-question-answer.md
+  raw_documents: local-data/aihub/source
+  prepared_documents: local-data/aihub/prepared
+  recorded_responses: data/recorded/week-01-nvidia-responses.jsonl
+  output: reports/week-01-nvidia
+
+documents:
+  render_dpi: 150
+  model_image_max_bytes: 175000
+  model_image_max_width: 1024
+
+provider:
+  kind: litellm
+  model: nvidia_nim/nvidia/nemotron-3-nano-omni-30b-a3b-reasoning
+  api_base: https://integrate.api.nvidia.com/v1
+  api_key_env: NVIDIA_NIM_API_KEY
+  structured_output: prompt_only
+  input_cost_per_token_usd: 0.0
+  output_cost_per_token_usd: 0.0
+
+limits:
+  max_requests: 40
+  requests_per_minute: 20
+  max_retries: 3
+  retry_initial_seconds: 5
+  max_cost_usd: 0.25
+  max_input_tokens: 250000
+  max_output_tokens: 500
+  max_wall_seconds: 120

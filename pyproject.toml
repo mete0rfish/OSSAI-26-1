@@ -1,0 +1,41 @@
+[project]
+name = "verifiable-ai-workflow-lab"
+version = "0.1.0"
+description = "AIHub PDF 질문 답변과 DeepEval 평가 실습"
+readme = "README.md"
+requires-python = ">=3.12,<3.13"
+dependencies = [
+  "deepeval[inspect]>=4.1.1,<5",
+  "litellm>=1.93.0,<2",
+  "pillow>=12.3.0,<13",
+  "pydantic>=2.13.4,<3",
+  "pypdfium2>=5.4.0,<6",
+  "python-dotenv>=1.2.1,<2",
+  "pyyaml>=6.0.3,<7",
+]
+
+[dependency-groups]
+dev = [
+  "jupyterlab>=4.6,<5",
+  "nbconvert>=7.16,<8",
+  "pytest>=9.1.1,<10",
+  "ruff>=0.15.20,<0.16",
+]
+
+[build-system]
+requires = ["hatchling>=1.27,<2"]
+build-backend = "hatchling.build"
+
+[tool.hatch.build.targets.wheel]
+packages = ["src/verifiable_ai_workflow"]
+
+[tool.pytest.ini_options]
+addopts = "-q -p no:rerunfailures"
+testpaths = ["tests"]
+
+[tool.ruff]
+line-length = 100
+target-version = "py312"
+
+[tool.ruff.lint]
+select = ["E", "F", "I", "UP", "B"]
