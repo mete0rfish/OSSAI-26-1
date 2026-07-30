@@ -78,6 +78,19 @@ uv run python scripts/inspect_inputs.py
 
 준비된 모든 기대 답과 근거 페이지는 실제 호출 전에 두 사람이 검토한다.
 
+## 대표 1건을 입력부터 평가까지 읽기
+
+```bash
+uv run --locked python scripts/show_week01_case.py
+```
+
+출력 한 건을 `input` → `model_output.raw_response` → `parsed_answer` → `expected` →
+`evaluation_design` → `evaluation_result` 순서로 읽는다. 이 명령은 저장된 실제 응답을
+다시 채점하므로 `test_only`이며, 현재 모델의 실제 품질 증거는 아니다. 전체 40건과
+DeepEval 평가는 아래 `evaluate_workflow.py`에서 실행한다. `input`에는 실제로 준비한
+page JPEG의 경로·byte 크기와 기대 page의 짧은 추출 문장만 나오며, 이미지 base64와
+문서 전체 문장은 출력하지 않는다.
+
 ## 실제 첫 1건
 
 ```bash
