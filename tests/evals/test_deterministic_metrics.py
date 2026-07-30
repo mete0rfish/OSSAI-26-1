@@ -9,9 +9,9 @@ from verifiable_ai_workflow.schemas import ModelObservation
 
 def test_deepeval_metrics_include_quantitative_scores(project_root: Path) -> None:
     case = build_cases(project_root / "data/cases/week-01-aihub.yaml")[0]
-    response = RecordedProvider(
-        project_root / "tests/fixtures/recorded-responses.jsonl"
-    ).generate(case.sample_id, [])
+    response = RecordedProvider(project_root / "tests/fixtures/recorded-responses.jsonl").generate(
+        case.sample_id, []
+    )
     result = score_observations(
         [case],
         [

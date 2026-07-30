@@ -43,8 +43,7 @@ def _edit_similarity(actual: str, expected: str) -> float:
                 min(
                     current[-1] + 1,
                     previous[right_index] + 1,
-                    previous[right_index - 1]
-                    + int(left_character != right_character),
+                    previous[right_index - 1] + int(left_character != right_character),
                 )
             )
         previous = current
@@ -71,16 +70,11 @@ def _token_f1(actual: str, expected: str) -> float:
     if not actual_counts or not expected_counts:
         return float(actual_counts == expected_counts)
     overlap = sum(
-        min(count, expected_counts.get(token, 0))
-        for token, count in actual_counts.items()
+        min(count, expected_counts.get(token, 0)) for token, count in actual_counts.items()
     )
     precision = overlap / sum(actual_counts.values())
     recall = overlap / sum(expected_counts.values())
-    return (
-        2 * precision * recall / (precision + recall)
-        if precision + recall
-        else 0.0
-    )
+    return 2 * precision * recall / (precision + recall) if precision + recall else 0.0
 
 
 def _best_quote_similarity(quote: str, page_text: str) -> float:
@@ -187,9 +181,7 @@ def score_output(
         else 0.0
     )
     evidence_coverage = float(
-        bool(actual_pages & expected_pages)
-        if expected_pages
-        else not actual_pages
+        bool(actual_pages & expected_pages) if expected_pages else not actual_pages
     )
 
     quote_scores: list[float] = []
@@ -213,9 +205,7 @@ def score_output(
         verifiable_quote_scores = [1.0]
 
     quote_answer_support = (
-        sum(quote_answer_scores) / len(quote_answer_scores)
-        if quote_answer_scores
-        else 0.0
+        sum(quote_answer_scores) / len(quote_answer_scores) if quote_answer_scores else 0.0
     )
     quote_verifiability = (
         len(verifiable_quote_scores) / len(quote_scores)
@@ -233,14 +223,10 @@ def score_output(
         else None
     )
     quote_required = (
-        page_texts is not None
-        and not case.expected.abstained
-        and verifiable_grounding is not None
+        page_texts is not None and not case.expected.abstained and verifiable_grounding is not None
     )
     quote_passed = (
-        not quote_required
-        or verifiable_grounding is not None
-        and verifiable_grounding >= 0.8
+        not quote_required or verifiable_grounding is not None and verifiable_grounding >= 0.8
     )
 
     task_success = float(
@@ -297,9 +283,7 @@ def score_output(
             if evidence_coverage
             else "가능한 근거 페이지를 인용하지 않음"
         ),
-        "quote_answer_support": (
-            f"인용문 내 답 핵심값 포함 비율={quote_answer_support:.4f}"
-        ),
+        "quote_answer_support": (f"인용문 내 답 핵심값 포함 비율={quote_answer_support:.4f}"),
         "quote_verifiability": (
             f"PDF 추출 텍스트로 검증 가능한 인용 비율={quote_verifiability:.4f}"
         ),

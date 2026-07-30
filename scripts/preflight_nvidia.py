@@ -69,10 +69,7 @@ def main() -> int:
     print(f"available now: {configured in available}")
     print("catalog models:")
     for category, model, languages in CATALOG_MODELS:
-        print(
-            f"- [{category}] {model}: {model in available}; "
-            f"languages={languages}"
-        )
+        print(f"- [{category}] {model}: {model in available}; languages={languages}")
     return 0 if configured in available else 1
 
 

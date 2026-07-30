@@ -24,6 +24,7 @@ def _answer_fact_is_visible(text: str, answer: str) -> bool:
     if numbers:
         page_numbers = re.findall(r"-?\d+(?:\.\d+)?", unicodedata.normalize("NFKC", text))
         return all(number in page_numbers for number in numbers)
+
     def normalize(value: str) -> str:
         return re.sub(
             r"[^0-9a-z가-힣]+",
@@ -151,17 +152,14 @@ def main() -> int:
         "expected_page_counts": dict(
             sorted(Counter(page for case in cases for page in case.expected.pages).items())
         ),
-        "label_text_check_counts": dict(
-            Counter(row["status"] for row in label_text_checks)
-        ),
+        "label_text_check_counts": dict(Counter(row["status"] for row in label_text_checks)),
         "label_text_checks": label_text_checks,
         "prompt_characters": len(prompt),
         "schema_fields": sorted(schema_fields),
         "documents": documents,
         "anomalies": anomalies,
         "human_review": (
-            f"{len(cases)}개 기대 답과 근거 페이지는 실제 NIM 실행 전에 "
-            "두 사람이 검토한다."
+            f"{len(cases)}개 기대 답과 근거 페이지는 실제 NIM 실행 전에 두 사람이 검토한다."
         ),
     }
     output_path = project_path(PROJECT_ROOT, settings.paths.output) / "eda.json"

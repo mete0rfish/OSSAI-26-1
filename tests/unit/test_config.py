@@ -17,10 +17,7 @@ def test_nvidia_nim_config_is_ready_for_live_batch(project_root: Path) -> None:
     settings = load_settings(project_root / "configs/nvidia-nim.yaml")
 
     assert settings.provider.kind == "litellm"
-    assert (
-        settings.provider.model
-        == "nvidia_nim/nvidia/nemotron-3-nano-omni-30b-a3b-reasoning"
-    )
+    assert settings.provider.model == "nvidia_nim/nvidia/nemotron-3-nano-omni-30b-a3b-reasoning"
     assert settings.provider.structured_output == "prompt_only"
     assert settings.limits.max_requests == 40
     assert settings.limits.requests_per_minute < 40
