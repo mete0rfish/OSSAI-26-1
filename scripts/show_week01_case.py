@@ -50,6 +50,7 @@ def main() -> int:
     fixture_path = PROJECT_ROOT / "data/recorded/week-01-nvidia-responses.jsonl"
     provider = RecordedProvider(fixture_path)
     raw_response = provider.generate(case.sample_id, [])
+    call_metadata = getattr(provider, "last_call", None)
     parsed_answer, scores, reasons = score_output(raw_response, case, page_texts=page_texts)
 
     payload = {
@@ -88,13 +89,13 @@ def main() -> int:
                     "truncated": excerpt_start > 0 or excerpt_start + 240 < len(page_text),
                 },
             },
-            "recorded_input_tokens": (provider.last_call or {}).get("input_tokens"),
+            "recorded_input_tokens": (call_metadata or {}).get("input_tokens"),
         },
         "model_output": {
             "fixture": fixture_path.relative_to(PROJECT_ROOT).as_posix(),
             "raw_response": raw_response,
             "parsed_answer": parsed_answer.model_dump() if parsed_answer else None,
-            "call_metadata": provider.last_call,
+            "call_metadata": call_metadata,
         },
         "expected": case.expected.model_dump(),
         "evaluation_design": {
