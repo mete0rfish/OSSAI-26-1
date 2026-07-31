@@ -2,21 +2,20 @@
 
 ## 모델
 
-Week 1은 NVIDIA hosted endpoint에서
-`nvidia/nemotron-3-nano-omni-30b-a3b-reasoning`을 사용한다. 이름은 30B이며 실제
-활성 parameter는 약 3B인 multimodal model이다.
+Week 1은 NVIDIA hosted endpoint에서 `google/gemma-4-31b-it`을 사용한다. 한국어
+문서와 질문을 이미지와 함께 읽어야 하므로 다국어 multimodal model인 Gemma 4를
+수업 기준으로 고정한다.
 
 ```yaml
 provider:
-  model: nvidia_nim/nvidia/nemotron-3-nano-omni-30b-a3b-reasoning
+  model: nvidia_nim/google/gemma-4-31b-it
   api_base: https://integrate.api.nvidia.com/v1
   api_key_env: NVIDIA_NIM_API_KEY
 ```
 
-Nemotron 3 Nano Omni는 text, image, video, audio와 256K context를 지원한다.
-2026-07-29 실제 NVIDIA `/v1/models` 응답에서 사용 가능함을 확인했다. 모델 상태는
-변경될 수 있으므로
-`preflight_nvidia.py`를 매 수업 전에 실행한다.
+Gemma 4 31B IT는 text, image, video와 256K context를 지원하고 140개가 넘는 언어를
+다룬다. 2026-07-31 실제 NVIDIA `/v1/models` 응답에서 사용 가능함을 확인했다. 모델
+상태는 변경될 수 있으므로 `preflight_nvidia.py`를 매 수업 전에 실행한다.
 
 ## key
 
@@ -67,9 +66,9 @@ reports/week-01-nvidia/
 `observations.jsonl`은 원시 모델 응답과 호출 정보를, `results.jsonl`은 Pydantic과
 정량 평가 결과를 담는다.
 
-2026-07-29 실제 40건 실행에서는 40개 응답을 모두 받았고 429, 재시도와 provider
-오류가 없었다. 필수 정량 기준은 16건 통과, 24건 실패였다. 같은 원응답을 freeze한
-recorded 회귀도 16/24를 재현했다. 실제 header에는 고정 RPM 숫자가 없었으므로 이 결과는
-20 RPM 실측이며 40 RPM 보장은 아니다.
+2026-07-29의 실제 40건 실행은 이전 수업 대상인 Nemotron 3 Nano Omni로 수행했다.
+40개 응답을 모두 받았고 필수 정량 기준은 16건 통과, 24건 실패였다. 같은 원응답을
+freeze한 recorded 회귀도 16/24를 재현한다. 이 과거 응답을 Gemma 4 결과로 바꾸어
+표시하지 않는다. Gemma 4의 현재 품질은 새 live 실행 결과로만 판단한다.
 
 모델 정보는 [NVIDIA NIM 모델 카탈로그](nvidia-model-catalog.md)를 참고한다.

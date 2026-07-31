@@ -16,7 +16,7 @@ documents:
 
 provider:
   kind: litellm
-  model: nvidia_nim/nvidia/nemotron-3-nano-omni-30b-a3b-reasoning
+  model: nvidia_nim/google/gemma-4-31b-it
   api_base: https://integrate.api.nvidia.com/v1
   api_key_env: NVIDIA_NIM_API_KEY
   structured_output: prompt_only

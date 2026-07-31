@@ -104,8 +104,11 @@ Week 1의 task model은 NVIDIA hosted NIM endpoint를 LiteLLM adapter로 호출�
 | --- | --- |
 | API base | `https://integrate.api.nvidia.com/v1` |
 | 환경 변수 | `NVIDIA_NIM_API_KEY` |
-| 수업 기준 모델 | `nvidia/nemotron-3-nano-omni-30b-a3b-reasoning` |
-| LiteLLM model ID | `nvidia_nim/nvidia/nemotron-3-nano-omni-30b-a3b-reasoning` |
+| 수업 기준 모델 | `google/gemma-4-31b-it` |
+| LiteLLM model ID | `nvidia_nim/google/gemma-4-31b-it` |
+
+Gemma 4는 이미지와 한국어를 함께 처리하는 다국어 모델이다. 이 실습은 한국어 문서와
+질문을 사용하므로 영어 중심 모델 대신 Gemma 4를 고정한다.
 
 `.env.example`을 `.env`로 복사한 뒤 비어 있는 `NVIDIA_NIM_API_KEY`에 발급받은 key만
 입력한다.

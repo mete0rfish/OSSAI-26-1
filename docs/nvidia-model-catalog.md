@@ -1,6 +1,6 @@
 # NVIDIA NIM 수업용 모델 카탈로그
 
-확인일: 2026-07-29
+확인일: 2026-07-31
 
 아래 모델은 NVIDIA 공식 카탈로그에서 Free Endpoint가 활성화되어 있고, 수업 계정의
 `/v1/models` 목록에도 있는 모델이다. `공식 언어 목록 미기재`는 모델 문서에서 지원
@@ -14,7 +14,7 @@
 | [`nvidia/nemotron-nano-12b-v2-vl`](https://build.nvidia.com/nvidia/nemotron-nano-12b-v2-vl) | NVIDIA | 13B | 131K | text·image·video | text | 영어만 | 짧은 다중 이미지 Q&A·문서 이해 |
 | [`meta/llama-3.2-11b-vision-instruct`](https://build.nvidia.com/meta/llama-3.2-11b-vision-instruct) | Meta | 11B | 131K | text·image | text | text-only 8개 언어, image+text 영어만 | 이미지 VQA·DocVQA |
 | [`google/diffusiongemma-26b-a4b-it`](https://build.nvidia.com/google/diffusiongemma-26b-a4b-it) | Google | 25.2B/A3.8B | 262K | text·image·video | text | 35개 이상 언어 | 빠른 생성·PDF parsing·OCR·structured JSON |
-| [`google/gemma-4-31b-it`](https://build.nvidia.com/google/gemma-4-31b-it) | Google | 33B | 262K | text·image·video | text | 35개 이상 언어 | 문서·이미지·영상 이해·coding·agent |
+| [`google/gemma-4-31b-it`](https://build.nvidia.com/google/gemma-4-31b-it) | Google | 33B | 262K | text·image·video | text | 140개 이상 언어 | 문서·이미지·영상 이해·coding·agent |
 | [`minimaxai/minimax-m3`](https://build.nvidia.com/minimaxai/minimax-m3) | MiniMax | 427B | 1M | text·image·video | text | 공식 언어 목록 미기재 | 장문 멀티모달 추론·coding·tool calling |
 | [`stepfun-ai/step-3.7-flash`](https://build.nvidia.com/stepfun-ai/step-3.7-flash) | StepFun | 약 200B/A11B | 262K | text·image | text | 공식 언어 목록 미기재 | 차트·GUI·coding·agent |
 | [`meta/llama-3.2-90b-vision-instruct`](https://build.nvidia.com/meta/llama-3.2-90b-vision-instruct) | Meta | 89B | 131K | text·image | text | text-only 8개 언어, image+text 영어만 | 대형 VQA·DocVQA 비교 |
@@ -22,7 +22,8 @@
 
 Llama 3.2 Vision의 text-only 공식 언어는 영어, 독일어, 프랑스어, 이탈리아어,
 포르투갈어, 힌디어, 스페인어, 태국어다. image+text의 공식 지원 언어는 영어다.
-Gemma 4 계열은 35개 이상 언어를 바로 지원하며 140개 이상 언어로 사전 학습됐다.
+한국어 데이터 실습의 수업 기준 모델은 Gemma 4 31B IT다. Gemma 4 계열은 140개가
+넘는 언어를 지원한다.
 
 ## Text 모델
 

@@ -29,7 +29,7 @@ uv run python scripts/preflight_nvidia.py
 완료 기준:
 
 - Python 3.12와 필수 package 확인
-- `configured model: nvidia/nemotron-3-nano-omni-30b-a3b-reasoning`
+- `configured model: google/gemma-4-31b-it`
 - `available now: True`
 
 ## PDF 전처리
