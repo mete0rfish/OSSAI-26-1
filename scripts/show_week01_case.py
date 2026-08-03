@@ -3,6 +3,7 @@
 from __future__ import annotations
 
 import json
+import sys
 from pathlib import Path
 
 from verifiable_ai_workflow.data.dataset import build_cases
@@ -19,6 +20,13 @@ def main() -> int:
     case = next(item for item in cases if item.sample_id == CASE_ID)
 
     manifest_path = PREPARED_ROOT / case.document_id / "manifest.json"
+    if not manifest_path.is_file():
+        print(
+            "준비된 문서가 없습니다. 먼저 "
+            "`uv run python scripts/prepare_documents.py`를 실행하세요.",
+            file=sys.stderr,
+        )
+        return 2
     manifest = json.loads(manifest_path.read_text(encoding="utf-8"))
     sent_page_images = []
     page_texts = {}

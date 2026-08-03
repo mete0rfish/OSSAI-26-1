@@ -18,6 +18,10 @@ def test_week01_case_walkthrough_shows_input_output_expected_and_score(
     spec.loader.exec_module(module)
 
     prepared_root = tmp_path / "prepared"
+    monkeypatch.setattr(module, "PREPARED_ROOT", prepared_root)
+    assert module.main() == 2
+    assert "scripts/prepare_documents.py" in capsys.readouterr().err
+
     document_root = prepared_root / "MI2_240819_TY1_0012"
     (document_root / "model-pages").mkdir(parents=True)
     (document_root / "text").mkdir()
@@ -42,8 +46,6 @@ def test_week01_case_walkthrough_shows_input_output_expected_and_score(
         ),
         encoding="utf-8",
     )
-    monkeypatch.setattr(module, "PREPARED_ROOT", prepared_root)
-
     assert module.main() == 0
     payload = json.loads(capsys.readouterr().out)
 
