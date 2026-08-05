@@ -12,3 +12,5 @@ local-data/*
 
 reports/*
 !reports/.gitkeep
+
+/AGENTS.md

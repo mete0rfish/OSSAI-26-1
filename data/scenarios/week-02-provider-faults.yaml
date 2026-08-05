@@ -1,0 +1,36 @@
+artifact_schema_version: 2
+scenarios:
+  - scenario_id: auth-error
+    mode: benchmark
+    expected_actual_model: provider-a/vlm
+    events:
+      - {status: auth_error, provider: provider-a, latency_ms: 12, estimated_cost_usd: 0}
+  - scenario_id: rate-limit-then-success
+    mode: benchmark
+    expected_actual_model: provider-a/vlm
+    events:
+      - {status: rate_limit, provider: provider-a, latency_ms: 40, estimated_cost_usd: 0}
+      - {status: success, provider: provider-a, actual_model: provider-a/vlm, latency_ms: 210, estimated_cost_usd: 0.002}
+  - scenario_id: repeated-timeout
+    mode: benchmark
+    expected_actual_model: provider-a/vlm
+    events:
+      - {status: timeout, provider: provider-a, latency_ms: 500, estimated_cost_usd: 0.003}
+      - {status: timeout, provider: provider-a, latency_ms: 500, estimated_cost_usd: 0.003}
+      - {status: timeout, provider: provider-a, latency_ms: 500, estimated_cost_usd: 0.003}
+  - scenario_id: actual-model-not-reported
+    mode: benchmark
+    expected_actual_model: provider-a/vlm
+    events:
+      - {status: success, provider: provider-a, latency_ms: 180, estimated_cost_usd: 0.002}
+  - scenario_id: actual-model-drift
+    mode: benchmark
+    expected_actual_model: provider-a/vlm
+    events:
+      - {status: success, provider: provider-a, actual_model: provider-a/vlm-v2, latency_ms: 190, estimated_cost_usd: 0.002}
+  - scenario_id: fallback-success
+    mode: availability
+    expected_actual_model: provider-b/vlm
+    events:
+      - {status: server_error, provider: provider-a, latency_ms: 100, estimated_cost_usd: 0.001}
+      - {status: success, provider: provider-b, actual_model: provider-b/vlm, latency_ms: 220, estimated_cost_usd: 0.003}

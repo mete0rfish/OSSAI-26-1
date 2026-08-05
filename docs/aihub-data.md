@@ -39,8 +39,9 @@ uv run python scripts/prepare_documents.py \
 uv run python scripts/prepare_documents.py
 ```
 
-명령을 실행하면 PDF의 각 페이지가 사람이 확인하는 PNG, API용 JPEG와 근거 검사용
-text로 변환되고 문서 정보가 `manifest.json`에 저장된다.
+명령을 실행하면 PDF의 각 페이지가 사람이 확인하는 PNG, API용 JPEG와 라벨 작성·점검용
+텍스트로 변환되고 문서 정보가 목록 파일(`manifest.json`)에 저장된다. 이 텍스트는 작업
+모델(task model) 입력이나 고정 규칙 채점에 사용하지 않는다.
 
 ```text
 local-data/aihub/prepared/
@@ -64,15 +65,15 @@ local-data/aihub/prepared/
 uv run python scripts/prepare_cases.py
 ```
 
-명령을 실행하면 workflow가 읽을 `local-data/aihub/cases.jsonl`이 만들어진다.
+명령을 실행하면 작업 흐름(workflow)이 읽을 `local-data/aihub/cases.jsonl`이 만들어진다.
 각 질문에는 문서 ID, 질문, 기대 답과 가능한 근거 페이지가 들어 있다. 같은 답이 여러
 페이지에 반복되면 `pages`에 모두 적고 모델은 그중 하나를 인용하면 된다.
 
 원문 대조 과정에서 보도자료 P07의 근거를 2쪽에서 3쪽으로 바로잡았고, P08은 동일 표가
 1쪽과 3쪽에 있어 두 페이지를 모두 가능한 근거로 기록했다. 나머지 표·차트 숫자 중
-PDF text layer에 나오지 않는 값은 EDA에서 별도 확인하고 원본 페이지 이미지로
-사람이 검토한다.
+PDF 텍스트 계층(text layer)에 나오지 않는 값은 탐색 단계(EDA)에서 별도 확인하고 원본
+페이지 이미지로 사람이 검토한다.
 
-현재 자동 점검 결과는 정답 30건 일치, text layer로 확인할 수 없는 표·복합 날짜 6건,
+현재 자동 점검 결과는 정답 30건 일치, 텍스트 계층으로 확인할 수 없는 표·복합 날짜 6건,
 답변 보류 수동 검토 4건, 페이지 라벨 불일치 0건이다. 자동 점검 통과는 두 사람 검토를
 대체하지 않는다.

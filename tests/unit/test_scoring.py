@@ -49,7 +49,7 @@ def test_numeric_answer_allows_wording_variation(project_root: Path) -> None:
     assert scores["answer_correct"] == 1.0
 
 
-def test_quote_uses_answer_fact_when_pdf_line_breaks_differ(
+def test_quote_answer_support_checks_only_model_output_consistency(
     project_root: Path,
 ) -> None:
     case = build_cases(project_root / "data/cases/week-01-aihub.yaml")[1]
@@ -67,17 +67,14 @@ def test_quote_uses_answer_fact_when_pdf_line_breaks_differ(
         "abstention_reason": None,
         "tool_requests": [],
     }
-    page_texts = {1: "금년중 민간소비는 2.2% 증가할 전망"}
-
-    _, scores, _ = score_output(response, case, page_texts=page_texts)
+    _, scores, reasons = score_output(response, case)
 
     assert scores["quote_answer_support"] == 1.0
-    assert scores["quote_verifiability"] == 1.0
-    assert scores["quote_grounding"] == 1.0
     assert scores["task_success"] == 1.0
+    assert "이미지 근거 일치 여부를 증명" in reasons["quote_answer_support"]
 
 
-def test_unextractable_chart_value_is_not_a_false_model_failure(
+def test_quote_answer_support_does_not_gate_task_success(
     project_root: Path,
 ) -> None:
     case = build_cases(project_root / "data/cases/week-01-aihub.yaml")[13]
@@ -86,7 +83,7 @@ def test_unextractable_chart_value_is_not_a_false_model_failure(
         "evidence": [
             {
                 "evidence_id": "page-5",
-                "quote": "아파트 입주물량 37.9만호",
+                "quote": "값을 확인했습니다.",
                 "page_number": 5,
             }
         ],
@@ -95,13 +92,12 @@ def test_unextractable_chart_value_is_not_a_false_model_failure(
         "abstention_reason": None,
         "tool_requests": [],
     }
-    page_texts = {5: "아파트 입주물량 자료: 국토교통부"}
+    _, scores, _ = score_output(response, case)
 
-    _, scores, reasons = score_output(response, case, page_texts=page_texts)
-
-    assert scores["quote_verifiability"] == 0.0
+    assert scores["quote_answer_support"] == 0.0
     assert scores["task_success"] == 1.0
-    assert "gate에서 제외" in reasons["quote_grounding"]
+    assert "quote_verifiability" not in scores
+    assert "quote_grounding" not in scores
 
 
 def test_one_of_multiple_acceptable_pages_is_enough(project_root: Path) -> None:

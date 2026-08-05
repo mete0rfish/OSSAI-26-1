@@ -2,6 +2,7 @@
 
 from __future__ import annotations
 
+import argparse
 import json
 import urllib.request
 from pathlib import Path
@@ -25,9 +26,9 @@ CATALOG_MODELS = (
     (
         "multimodal",
         "google/diffusiongemma-26b-a4b-it",
-        "35+ languages",
+        "multilingual",
     ),
-    ("multimodal", "google/gemma-4-31b-it", "140+ languages"),
+    ("multimodal", "google/gemma-4-31b-it", "35+ languages; pre-trained on 140+"),
     (
         "multimodal",
         "minimaxai/minimax-m3",
@@ -51,8 +52,11 @@ CATALOG_MODELS = (
 
 
 def main() -> int:
+    parser = argparse.ArgumentParser(description="NVIDIA NIM 모델 목록 사전 확인")
+    parser.add_argument("--config", default="configs/nvidia-nim.yaml")
+    args = parser.parse_args()
     load_project_env(PROJECT_ROOT)
-    settings = load_settings(PROJECT_ROOT / "configs/nvidia-nim.yaml")
+    settings = load_settings(PROJECT_ROOT / args.config)
     if not settings.provider.api_key_env:
         raise ValueError("NVIDIA NIM 설정에 api_key_env가 필요합니다")
     api_key = require_api_key(settings.provider.api_key_env)

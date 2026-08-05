@@ -103,7 +103,15 @@ class ModelObservation(Contract):
     raw_output: Any = None
     model_error: str | None = None
     model_call: dict[str, Any] | None = None
-    evidence_kind: Literal["test_only", "live_quality"]
+    evidence_kind: Literal["test_only", "live_quality", "availability"]
+    evaluation_mode: Literal["benchmark", "availability"] = "benchmark"
+    provider_status: Literal[
+        "success",
+        "invalid_output",
+        "provider_error",
+        "blocked",
+    ] = "success"
+    route_attempts: list[dict[str, Any]] = Field(default_factory=list)
 
 
 class EvaluationResult(Contract):
@@ -115,4 +123,13 @@ class EvaluationResult(Contract):
     raw_output: Any = None
     scores: dict[str, float]
     reasons: dict[str, str]
-    evidence_kind: Literal["test_only", "live_quality"]
+    evidence_kind: Literal["test_only", "live_quality", "availability"]
+    evaluation_mode: Literal["benchmark", "availability"] = "benchmark"
+    provider_status: Literal[
+        "success",
+        "invalid_output",
+        "provider_error",
+        "blocked",
+    ] = "success"
+    model_call: dict[str, Any] | None = None
+    route_attempts: list[dict[str, Any]] = Field(default_factory=list)

@@ -1,0 +1,60 @@
+artifact_schema_version: 3
+expected_sample_count: 40
+
+paths:
+  case_authoring: data/cases/week-01-aihub.yaml
+  prepared_documents: local-data/aihub/prepared
+  # Gemma 전용 /no_think를 뺀 개선 prompt를 두 provider에 똑같이 보낸다.
+  prompt: prompts/pdf-question-answer-json-only.md
+  output: reports/week-02-live
+
+# 두 route의 model catalog와 가격은 live 실행 당일 다시 확인한다.
+# provider_id, key 환경 변수와 API endpoint가 달라야 같은 provider의 별칭 비교가
+# 아니라 실제 두-provider 비교가 된다.
+baseline_route:
+  provider_id: nvidia-nim
+  model: nvidia_nim/google/gemma-4-31b-it
+  # provider catalog ID를 고정하고 LiteLLM의 transport prefix는 코드에서 분리한다.
+  expected_actual_model: google/gemma-4-31b-it
+  api_base: https://integrate.api.nvidia.com/v1
+  api_key_env: NVIDIA_NIM_API_KEY
+  structured_output: prompt_only
+  billing_basis: developer_program_free_endpoint
+  pricing_source_url: https://docs.api.nvidia.com/nim/docs/product
+  pricing_verified_on: 2026-07-30
+  input_cost_per_token_usd: 0.0
+  output_cost_per_token_usd: 0.0
+  task_budget:
+    max_requests: 40
+    requests_per_minute: 20
+    max_retries: 0
+    retry_initial_seconds: 5
+    max_cost_usd: 0.25
+    max_input_tokens_per_request: 20000
+    max_output_tokens_per_request: 500
+    request_timeout_seconds: 120
+    max_wall_seconds: 1800
+
+candidate_route:
+  provider_id: google-ai-studio
+  model: gemini/gemini-3.5-flash-lite
+  expected_actual_model: gemini-3.5-flash-lite
+  # 고정 LiteLLM의 Gemini 3.x v1alpha 선택을 피하도록 승인된 v1beta 경로를 명시한다.
+  api_base: https://generativelanguage.googleapis.com/v1beta
+  api_key_env: GEMINI_API_KEY
+  structured_output: json_schema
+  billing_basis: developer_program_free_endpoint
+  pricing_source_url: https://ai.google.dev/gemini-api/docs/pricing
+  pricing_verified_on: 2026-08-03
+  input_cost_per_token_usd: 0.0
+  output_cost_per_token_usd: 0.0
+  task_budget:
+    max_requests: 40
+    requests_per_minute: 5
+    max_retries: 0
+    retry_initial_seconds: 5
+    max_cost_usd: 0.01
+    max_input_tokens_per_request: 20000
+    max_output_tokens_per_request: 500
+    request_timeout_seconds: 120
+    max_wall_seconds: 1800

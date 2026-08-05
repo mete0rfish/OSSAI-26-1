@@ -156,14 +156,22 @@ def prepare_directory(
     ]
 
 
-def load_document(prepared_root: str | Path, document_id: str) -> tuple[PreparedDocument, Path]:
+def load_document(
+    prepared_root: str | Path,
+    document_id: str,
+    *,
+    require_text: bool = False,
+) -> tuple[PreparedDocument, Path]:
     manifest_path = Path(prepared_root) / document_id / "manifest.json"
     document = PreparedDocument.model_validate_json(manifest_path.read_text(encoding="utf-8"))
     required_paths = [
         manifest_path.parent / value
         for page in document.pages
-        for value in (page.image_path, page.model_image_path, page.text_path)
+        for value in (page.image_path, page.model_image_path)
     ]
+    if require_text:
+        required_paths.extend(manifest_path.parent / page.text_path for page in document.pages)
     if any(not path.is_file() for path in required_paths):
-        raise DocumentPreparationError("전처리 페이지 이미지 또는 텍스트가 없습니다")
+        expected = "페이지 이미지와 라벨 점검용 텍스트" if require_text else "페이지 이미지"
+        raise DocumentPreparationError(f"전처리 {expected}가 없습니다")
     return document, manifest_path

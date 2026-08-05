@@ -16,19 +16,29 @@ documents:
 
 provider:
   kind: litellm
-  model: nvidia_nim/google/gemma-4-31b-it
+  model: nvidia_nim/nvidia/nemotron-3-nano-omni-30b-a3b-reasoning
+  # provider catalog ID를 고정하고 LiteLLM의 transport prefix는 코드에서 분리한다.
+  expected_actual_model: nvidia/nemotron-3-nano-omni-30b-a3b-reasoning
   api_base: https://integrate.api.nvidia.com/v1
   api_key_env: NVIDIA_NIM_API_KEY
   structured_output: prompt_only
+  billing_basis: developer_program_free_endpoint
+  pricing_source_url: https://docs.api.nvidia.com/nim/docs/product
+  pricing_verified_on: 2026-07-30
   input_cost_per_token_usd: 0.0
   output_cost_per_token_usd: 0.0
 
 limits:
   max_requests: 40
   requests_per_minute: 20
-  max_retries: 3
+  max_retries: 0
   retry_initial_seconds: 5
-  max_cost_usd: 0.25
-  max_input_tokens: 250000
-  max_output_tokens: 500
-  max_wall_seconds: 120
+  max_cost_usd: 0.01
+  # 아래 세 값은 실행 전체 누적 ceiling이다. CLI는 이 값을 넘을 수 없다.
+  max_input_tokens: 800000
+  max_output_tokens: 20000
+  max_wall_seconds: 7200
+  # 실제 API 한 번에 예약하고 전송하는 ceiling은 전체 cap과 분리한다.
+  request_input_token_ceiling: 20000
+  request_output_token_ceiling: 500
+  request_timeout_seconds: 120

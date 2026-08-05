@@ -1,4 +1,4 @@
-"""모델 응답을 정답, 숫자, 근거 페이지와 실제 PDF 문장으로 평가한다."""
+"""VLM 응답을 구조, 정답, 답변 보류와 근거 페이지로 결정적으로 평가한다."""
 
 from __future__ import annotations
 
@@ -6,13 +6,13 @@ import json
 import re
 import unicodedata
 from difflib import SequenceMatcher
-from pathlib import Path
 from typing import Any
 
 from pydantic import ValidationError
 
-from ..preprocessing import load_document
 from ..schemas import EvaluationCase, EvaluationResult, ModelObservation, StructuredAnswer
+
+SCORING_PROFILE = "aihub-vqa-deterministic-v2"
 
 
 def _normalize(text: str) -> str:
@@ -77,22 +77,6 @@ def _token_f1(actual: str, expected: str) -> float:
     return 2 * precision * recall / (precision + recall) if precision + recall else 0.0
 
 
-def _best_quote_similarity(quote: str, page_text: str) -> float:
-    needle = _normalize(quote)
-    haystack = _normalize(page_text)
-    if not needle or not haystack:
-        return 0.0
-    if needle in haystack:
-        return 1.0
-
-    window_size = min(len(haystack), max(len(needle), round(len(needle) * 1.4)))
-    step = max(1, len(needle) // 4)
-    return max(
-        SequenceMatcher(None, needle, haystack[start : start + window_size]).ratio()
-        for start in range(0, max(1, len(haystack) - window_size + 1), step)
-    )
-
-
 def _contains_answer_fact(text: str, answer: str) -> bool:
     answer_numbers = _numbers(answer)
     if answer_numbers:
@@ -112,22 +96,9 @@ def parse_output(raw_output: Any) -> StructuredAnswer:
     return StructuredAnswer.model_validate(raw_output)
 
 
-def load_page_texts(
-    prepared_documents: str | Path,
-    document_id: str,
-) -> dict[int, str]:
-    document, manifest_path = load_document(prepared_documents, document_id)
-    return {
-        page.page_number: (manifest_path.parent / page.text_path).read_text(encoding="utf-8")
-        for page in document.pages
-    }
-
-
 def score_output(
     raw_output: Any,
     case: EvaluationCase,
-    *,
-    page_texts: dict[int, str] | None = None,
 ) -> tuple[StructuredAnswer | None, dict[str, float], dict[str, str]]:
     try:
         answer = parse_output(raw_output)
@@ -184,49 +155,15 @@ def score_output(
         bool(actual_pages & expected_pages) if expected_pages else not actual_pages
     )
 
-    quote_scores: list[float] = []
-    quote_answer_scores: list[float] = []
-    verifiable_quote_scores: list[float] = []
-    if answer and not answer.abstained and page_texts is not None:
-        for evidence in answer.evidence:
-            page_text = page_texts.get(evidence.page_number, "")
-            text_similarity = _best_quote_similarity(evidence.quote, page_text)
-            answer_in_quote = _contains_answer_fact(evidence.quote, actual_answer)
-            answer_in_page = _contains_answer_fact(page_text, actual_answer)
-            fact_support = float(answer_in_quote and answer_in_page)
-            score = max(text_similarity, fact_support)
-            quote_scores.append(score)
-            quote_answer_scores.append(float(answer_in_quote))
-            if _contains_answer_fact(page_text, case.expected.answer):
-                verifiable_quote_scores.append(score)
-    elif answer and answer.abstained:
-        quote_scores = [1.0]
-        quote_answer_scores = [1.0]
-        verifiable_quote_scores = [1.0]
-
+    quote_answer_scores = (
+        [float(_contains_answer_fact(item.quote, actual_answer)) for item in answer.evidence]
+        if answer and not answer.abstained
+        else [1.0]
+        if answer and answer.abstained
+        else []
+    )
     quote_answer_support = (
         sum(quote_answer_scores) / len(quote_answer_scores) if quote_answer_scores else 0.0
-    )
-    quote_verifiability = (
-        len(verifiable_quote_scores) / len(quote_scores)
-        if quote_scores
-        else float(bool(answer and answer.abstained))
-    )
-    quote_grounding = (
-        sum(quote_scores) / len(quote_scores)
-        if quote_scores
-        else float(bool(answer and answer.abstained))
-    )
-    verifiable_grounding = (
-        sum(verifiable_quote_scores) / len(verifiable_quote_scores)
-        if verifiable_quote_scores
-        else None
-    )
-    quote_required = (
-        page_texts is not None and not case.expected.abstained and verifiable_grounding is not None
-    )
-    quote_passed = (
-        not quote_required or verifiable_grounding is not None and verifiable_grounding >= 0.8
     )
 
     task_success = float(
@@ -234,7 +171,6 @@ def score_output(
         and abstention_correct == 1.0
         and answer_correct == 1.0
         and evidence_coverage == 1.0
-        and quote_passed
     )
     scores = {
         "json_object_only": json_object_only,
@@ -251,8 +187,6 @@ def score_output(
         "evidence_page_f1": round(page_f1, 4),
         "evidence_coverage": evidence_coverage,
         "quote_answer_support": round(quote_answer_support, 4),
-        "quote_verifiability": round(quote_verifiability, 4),
-        "quote_grounding": round(quote_grounding, 4),
         "task_success": task_success,
     }
     reasons = {
@@ -283,22 +217,9 @@ def score_output(
             if evidence_coverage
             else "가능한 근거 페이지를 인용하지 않음"
         ),
-        "quote_answer_support": (f"인용문 내 답 핵심값 포함 비율={quote_answer_support:.4f}"),
-        "quote_verifiability": (
-            f"PDF 추출 텍스트로 검증 가능한 인용 비율={quote_verifiability:.4f}"
-        ),
-        "quote_grounding": (
-            (
-                f"PDF page text/fact support={quote_grounding:.4f}; "
-                f"gate_score={verifiable_grounding:.4f}"
-                if verifiable_grounding is not None
-                else (
-                    f"PDF page text/fact support={quote_grounding:.4f}; "
-                    "표·차트 값이 추출되지 않아 gate에서 제외"
-                )
-            )
-            if page_texts is not None
-            else "PDF page text를 제공하지 않아 gate에서 제외"
+        "quote_answer_support": (
+            f"모델이 작성한 인용문 내 답 핵심값 포함 비율={quote_answer_support:.4f}; "
+            "이미지 근거 일치 여부를 증명하는 점수는 아님"
         ),
         "task_success": "모든 필수 정량 기준 통과" if task_success else "하나 이상 실패",
     }
@@ -308,11 +229,8 @@ def score_output(
 def score_observations(
     cases: list[EvaluationCase],
     observations: list[ModelObservation],
-    *,
-    prepared_documents: str | Path | None = None,
 ) -> list[EvaluationResult]:
     case_by_id = {case.sample_id: case for case in cases}
-    text_cache: dict[str, dict[int, str]] = {}
     results: list[EvaluationResult] = []
     for observation in observations:
         case = case_by_id[observation.sample_id]
@@ -332,8 +250,6 @@ def score_observations(
                 "evidence_page_f1",
                 "evidence_coverage",
                 "quote_answer_support",
-                "quote_verifiability",
-                "quote_grounding",
                 "task_success",
             )
             scores = dict.fromkeys(score_names, 0.0)
@@ -346,28 +262,22 @@ def score_observations(
                     scores=scores,
                     reasons={name: observation.model_error for name in scores},
                     evidence_kind=observation.evidence_kind,
+                    evaluation_mode=observation.evaluation_mode,
+                    provider_status="provider_error",
+                    model_call=observation.model_call,
+                    route_attempts=observation.route_attempts,
                 )
             )
             continue
 
-        page_texts = None
-        if prepared_documents is not None:
-            page_texts = text_cache.setdefault(
-                case.document_id,
-                load_page_texts(prepared_documents, case.document_id),
-            )
-        output, scores, reasons = score_output(
-            observation.raw_output,
-            case,
-            page_texts=page_texts,
-        )
+        output, scores, reasons = score_output(observation.raw_output, case)
         if output and any(
             evidence.page_number > observation.total_pages for evidence in output.evidence
         ):
             scores["evidence_coverage"] = 0.0
             scores["task_success"] = 0.0
-            reasons["evidence_coverage"] = "근거 페이지가 PDF 범위를 벗어났습니다"
-            reasons["task_success"] = "근거 페이지가 PDF 범위를 벗어남"
+            reasons["evidence_coverage"] = "근거 페이지가 문서 페이지 범위를 벗어났습니다"
+            reasons["task_success"] = "근거 페이지가 문서 페이지 범위를 벗어남"
         status = "passed" if scores["task_success"] == 1.0 else "failed"
         results.append(
             EvaluationResult(
@@ -379,6 +289,14 @@ def score_observations(
                 scores=scores,
                 reasons=reasons,
                 evidence_kind=observation.evidence_kind,
+                evaluation_mode=observation.evaluation_mode,
+                provider_status=(
+                    "invalid_output"
+                    if scores["schema_validity"] == 0.0
+                    else observation.provider_status
+                ),
+                model_call=observation.model_call,
+                route_attempts=observation.route_attempts,
             )
         )
     return results

@@ -1,0 +1,125 @@
+artifact_schema_version: 1
+status: week_02_live_completed_hold
+reviewed_on: 2026-08-05
+week_02_live_results: reports/week-02-live/full-improved-20260805-rerun-01/summary.json
+
+# 이 파일은 Week 1~2의 외부 전송 범위와 실행 상한만 기록한다.
+# API key 값과 사용자 승인 자체는 저장하지 않는다.
+destinations:
+  nvidia_nim:
+    endpoint: https://integrate.api.nvidia.com/v1
+    operator: NVIDIA
+  google_ai_studio:
+    endpoint: https://generativelanguage.googleapis.com/v1beta
+    operator: Google AI Studio
+    model: gemini-3.5-flash-lite
+    plan: free
+    data_use: product_improvement_allowed_by_free_tier_terms
+
+approval_conditions:
+  scope: week_01_to_week_02_only
+  execution_order: probe_then_full
+  sealed_test_allowed: false
+  current_decision: HOLD
+
+runs:
+  week_01_task:
+    destination: nvidia_nim
+    provider_contract:
+      requested_model: nvidia_nim/google/gemma-4-31b-it
+      expected_actual_model: google/gemma-4-31b-it
+      endpoint: https://integrate.api.nvidia.com/v1
+      api_key_env: NVIDIA_NIM_API_KEY
+    payload:
+      - AIHub 이용정책이 적용되는 PDF에서 만든 페이지 JPEG
+      - 한국어 질문
+      - 구조화 답변용 system prompt
+    payload_not_sent:
+      - PDF 추출 문장
+      - 기대 정답
+      - scorer 결과
+      - API key
+    planned_scope:
+      sample_count: 40
+      fallback: false
+      replay: false
+      probe_caps:
+        requests: 1
+        input_tokens: 20000
+        output_tokens: 500
+        retries: 0
+        cost_usd: 0.01
+        wall_seconds: 120
+      full_caps:
+        requests: 40
+        input_tokens: 800000
+        output_tokens: 20000
+        retries: 0
+        cost_usd: 0.01
+        wall_seconds: 7200
+
+  week_02_two_provider:
+    destinations: [nvidia_nim, google_ai_studio]
+    implementation_status: full_improved_passed_relative_gate_hold_common_failures
+    provider_contracts:
+      baseline:
+        requested_model: nvidia_nim/google/gemma-4-31b-it
+        expected_actual_model: google/gemma-4-31b-it
+        endpoint: https://integrate.api.nvidia.com/v1
+        api_key_env: NVIDIA_NIM_API_KEY
+      candidate:
+        requested_model: gemini/gemini-3.5-flash-lite
+        expected_actual_model: gemini-3.5-flash-lite
+        endpoint: https://generativelanguage.googleapis.com/v1beta
+        api_key_env: GEMINI_API_KEY
+    payload:
+      - Week 1과 같은 AIHub 페이지 JPEG
+      - 같은 한국어 질문과 system prompt
+    payload_not_sent:
+      - PDF 추출 문장
+      - 기대 정답
+      - 다른 provider의 응답
+      - API key
+    planned_scope:
+      sample_count_per_provider: 40
+      provider_count: 2
+      fallback: false
+      replay: false
+      probe_caps:
+        requests: 2
+        input_tokens: 40000
+        output_tokens: 1000
+        retries: 0
+        cost_usd: 0.01
+        wall_seconds: 240
+      full_caps:
+        requests: 80
+        input_tokens: 1600000
+        output_tokens: 40000
+        retries: 0
+        cost_usd: 0.01
+        wall_seconds: 3600
+    actual_execution:
+      git_sha: e7f54dbe4f686568abb6ca3d70eca55f96bc7bb9
+      full_output: reports/week-02-live/full-improved-20260805-rerun-01
+      full_requests: 80
+      full_successful_responses: 80
+      baseline_provider_errors: 0
+      candidate_provider_errors: 0
+      baseline_invalid_outputs: 2
+      candidate_invalid_outputs: 0
+      actual_model_mismatches: 0
+      baseline_task_successes: 27
+      candidate_task_successes: 35
+      baseline_quality_eligible: 40
+      candidate_quality_eligible: 40
+      new_success: 8
+      new_failure: 0
+      unchanged: 32
+      input_tokens: 478850
+      output_tokens: 6989
+      cost_usd: 0.0
+      automated_status: pass
+      release_claim: false
+      human_decision: HOLD
+    blocker: common_abstention_failure_and_five_candidate_failures_require_review

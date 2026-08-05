@@ -32,5 +32,6 @@ def test_deepeval_metrics_include_quantitative_scores(project_root: Path) -> Non
     assert "answer_token_f1" in names
     assert "numeric_match" in names
     assert "evidence_page_f1" in names
-    assert "quote_verifiability" in names
-    assert "quote_grounding" in names
+    assert "quote_answer_support" in names
+    assert "quote_verifiability" not in names
+    assert "quote_grounding" not in names

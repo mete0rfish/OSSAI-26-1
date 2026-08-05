@@ -11,8 +11,10 @@ def test_week01_case_walkthrough_shows_input_output_expected_and_score(
     monkeypatch,
     tmp_path: Path,
 ) -> None:
-    script = project_root / "scripts/show_week01_case.py"
-    spec = importlib.util.spec_from_file_location("show_week01_case_test", script)
+    script = project_root / "scripts/inspect_deterministic_scoring_case.py"
+    spec = importlib.util.spec_from_file_location(
+        "inspect_deterministic_scoring_case_test", script
+    )
     assert spec is not None and spec.loader is not None
     module = importlib.util.module_from_spec(spec)
     spec.loader.exec_module(module)
@@ -24,12 +26,7 @@ def test_week01_case_walkthrough_shows_input_output_expected_and_score(
 
     document_root = prepared_root / "MI2_240819_TY1_0012"
     (document_root / "model-pages").mkdir(parents=True)
-    (document_root / "text").mkdir()
     (document_root / "model-pages/page-0001.jpg").write_bytes(b"jpeg-bytes")
-    (document_root / "text/page-0001.txt").write_text(
-        "은행 가계대출 중 변동금리 비중은 71.6%(2016년말 기준)",
-        encoding="utf-8",
-    )
     (document_root / "manifest.json").write_text(
         json.dumps(
             {
@@ -39,7 +36,6 @@ def test_week01_case_walkthrough_shows_input_output_expected_and_score(
                     {
                         "page_number": 1,
                         "model_image_path": "model-pages/page-0001.jpg",
-                        "text_path": "text/page-0001.txt",
                     }
                 ],
             }
@@ -66,22 +62,30 @@ def test_week01_case_walkthrough_shows_input_output_expected_and_score(
     )
     prepared = payload["input"]["prepared_document"]
     assert prepared["source_sha256"] == "fixture-source-sha256"
-    assert prepared["sent_page_images"] == [
+    assert prepared["page_images_for_live_request"] == [
         {
             "page_number": 1,
             "path": ("local-data/aihub/prepared/MI2_240819_TY1_0012/model-pages/page-0001.jpg"),
             "bytes": 10,
+            "sha256": "0111dbc398b94eacda6759809c050530868ee7e313b3381c2f95ce8b55331c50",
         }
     ]
-    assert "71.6%" in prepared["expected_page_preview"]["text_excerpt"]
+    assert prepared["expected_page_reference"] == {
+        "page_number": 1,
+        "image_path": (
+            "local-data/aihub/prepared/MI2_240819_TY1_0012/model-pages/page-0001.jpg"
+        ),
+    }
     assert isinstance(payload["model_output"]["raw_response"], str)
-    assert payload["model_output"]["parsed_answer"]["answer"] == "71.6%"
+    assert payload["model_output"]["parsed_answer"]["answer"] == (
+        "2016년 말 기준 은행 가계대출 중 변동금리 비중은 71.6%입니다."
+    )
     assert payload["expected"] == {
         "answer": "71.6%",
         "pages": [1],
         "abstained": False,
     }
-    assert payload["evaluation_result"]["scores"]["task_success"] == 1.0
-    assert payload["evaluation_result"]["status"] == "passed"
+    assert payload["evaluation_result"]["scores"]["task_success"] == 0.0
+    assert payload["evaluation_result"]["status"] == "failed"
     assert payload["evidence_boundary"]["evidence_kind"] == "test_only"
     assert payload["evidence_boundary"]["live_quality_claim"] is False

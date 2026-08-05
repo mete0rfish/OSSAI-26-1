@@ -33,14 +33,7 @@ def main() -> int:
     output_dir = project_path(PROJECT_ROOT, settings.paths.output)
     cases = load_cases(project_path(PROJECT_ROOT, settings.paths.cases))
     observations = _load_observations(output_dir / "observations.jsonl")
-    results = score_observations(
-        cases,
-        observations,
-        prepared_documents=project_path(
-            PROJECT_ROOT,
-            settings.paths.prepared_documents,
-        ),
-    )
+    results = score_observations(cases, observations)
 
     (output_dir / "results.jsonl").write_text(
         "".join(result.model_dump_json() + "\n" for result in results),

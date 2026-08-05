@@ -27,6 +27,8 @@ def test_preparation_workflow_and_scoring_connect(
         prepared_root / "MI2_240819_TY1_0012",
         document_id="MI2_240819_TY1_0012",
     )
+    for text_path in (prepared_root / "MI2_240819_TY1_0012/text").iterdir():
+        text_path.unlink()
     cases = build_cases(project_root / "data/cases/week-01-aihub.yaml")[:1]
     observations = run_cases(
         cases=cases,

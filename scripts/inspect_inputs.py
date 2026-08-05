@@ -49,7 +49,7 @@ def main() -> int:
     document_texts: dict[str, dict[int, str]] = {}
 
     for document_id in sorted({case.document_id for case in cases}):
-        document, manifest_path = load_document(prepared_root, document_id)
+        document, manifest_path = load_document(prepared_root, document_id, require_text=True)
         page_rows = []
         page_texts: dict[int, str] = {}
         for page in document.pages:

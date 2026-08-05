@@ -1,0 +1,41 @@
+artifact_schema_version: 2
+
+paths:
+  case_authoring: data/cases/week-01-aihub.yaml
+  cases: local-data/aihub/cases.jsonl
+  prompt: prompts/pdf-question-answer.md
+  raw_documents: local-data/aihub/source
+  prepared_documents: local-data/aihub/prepared
+  recorded_responses: data/recorded/week-02-gemma-baseline-responses.jsonl
+  output: reports/week-02-gemma-baseline
+
+documents:
+  render_dpi: 150
+  model_image_max_bytes: 175000
+  model_image_max_width: 1024
+
+provider:
+  kind: litellm
+  model: nvidia_nim/google/gemma-4-31b-it
+  expected_actual_model: google/gemma-4-31b-it
+  api_base: https://integrate.api.nvidia.com/v1
+  api_key_env: NVIDIA_NIM_API_KEY
+  structured_output: prompt_only
+  billing_basis: developer_program_free_endpoint
+  pricing_source_url: https://docs.api.nvidia.com/nim/docs/product
+  pricing_verified_on: 2026-07-30
+  input_cost_per_token_usd: 0.0
+  output_cost_per_token_usd: 0.0
+
+limits:
+  max_requests: 40
+  requests_per_minute: 20
+  max_retries: 0
+  retry_initial_seconds: 5
+  max_cost_usd: 0.01
+  max_input_tokens: 800000
+  max_output_tokens: 20000
+  max_wall_seconds: 7200
+  request_input_token_ceiling: 20000
+  request_output_token_ceiling: 500
+  request_timeout_seconds: 120

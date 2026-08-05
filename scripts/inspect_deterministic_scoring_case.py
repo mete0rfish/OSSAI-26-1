@@ -1,4 +1,4 @@
-"""Week 1 대표 1건의 입력부터 결정적 평가까지 한 화면에 보여 준다."""
+"""대표 1건의 이미지 입력부터 결정적 평가까지 한 화면에 보여 준다."""
 
 from __future__ import annotations
 
@@ -6,8 +6,9 @@ import json
 import sys
 from pathlib import Path
 
+from verifiable_ai_workflow.comparison import sha256_file
 from verifiable_ai_workflow.data.dataset import build_cases
-from verifiable_ai_workflow.evaluation.scoring import score_output
+from verifiable_ai_workflow.evaluation.scoring import SCORING_PROFILE, score_output
 from verifiable_ai_workflow.providers.recorded import RecordedProvider
 
 PROJECT_ROOT = Path(__file__).resolve().parents[1]
@@ -28,20 +29,17 @@ def main() -> int:
         )
         return 2
     manifest = json.loads(manifest_path.read_text(encoding="utf-8"))
-    sent_page_images = []
-    page_texts = {}
+    page_images = []
     for page in manifest["pages"]:
         image_path = manifest_path.parent / page["model_image_path"]
-        page_texts[page["page_number"]] = (manifest_path.parent / page["text_path"]).read_text(
-            encoding="utf-8"
-        )
-        sent_page_images.append(
+        page_images.append(
             {
                 "page_number": page["page_number"],
                 "path": (
                     f"local-data/aihub/prepared/{case.document_id}/{page['model_image_path']}"
                 ),
                 "bytes": image_path.stat().st_size,
+                "sha256": sha256_file(image_path),
             }
         )
 
@@ -49,17 +47,11 @@ def main() -> int:
     expected_page = next(
         page for page in manifest["pages"] if page["page_number"] == expected_page_number
     )
-    text_path = manifest_path.parent / expected_page["text_path"]
-    page_text = text_path.read_text(encoding="utf-8")
-    answer_position = page_text.find(case.expected.answer)
-    excerpt_start = max(0, answer_position - 90) if answer_position >= 0 else 0
-    page_excerpt = " ".join(page_text[excerpt_start : excerpt_start + 240].split())[:240]
-
     fixture_path = PROJECT_ROOT / "data/recorded/week-01-nvidia-responses.jsonl"
     provider = RecordedProvider(fixture_path)
     raw_response = provider.generate(case.sample_id, [])
     call_metadata = getattr(provider, "last_call", None)
-    parsed_answer, scores, reasons = score_output(raw_response, case, page_texts=page_texts)
+    parsed_answer, scores, reasons = score_output(raw_response, case)
 
     payload = {
         "week": 1,
@@ -87,14 +79,13 @@ def main() -> int:
                 "manifest": (f"local-data/aihub/prepared/{case.document_id}/manifest.json"),
                 "source_sha256": manifest["source_sha256"],
                 "total_pages": manifest["total_pages"],
-                "sent_page_images": sent_page_images,
-                "expected_page_preview": {
+                "page_images_for_live_request": page_images,
+                "expected_page_reference": {
                     "page_number": expected_page_number,
-                    "text_path": (
-                        f"local-data/aihub/prepared/{case.document_id}/{expected_page['text_path']}"
+                    "image_path": (
+                        f"local-data/aihub/prepared/{case.document_id}/"
+                        f"{expected_page['model_image_path']}"
                     ),
-                    "text_excerpt": page_excerpt,
-                    "truncated": excerpt_start > 0 or excerpt_start + 240 < len(page_text),
                 },
             },
             "recorded_input_tokens": (call_metadata or {}).get("input_tokens"),
@@ -108,15 +99,16 @@ def main() -> int:
         "expected": case.expected.model_dump(),
         "evaluation_design": {
             "scorer": "verifiable_ai_workflow.evaluation.scoring.score_output",
+            "scoring_profile": SCORING_PROFILE,
             "method": "정해진 규칙으로 계산하는 결정적 평가",
             "task_success_formula": (
                 "schema_validity=1 AND abstention_correct=1 AND answer_correct=1 "
-                "AND evidence_coverage=1 AND 검증 가능한 quote 조건 통과"
+                "AND evidence_coverage=1"
             ),
             "answer_rule": "숫자형 정답은 실제 답과 기대 답의 숫자 목록이 같아야 통과",
             "evidence_rule": "모델이 제시한 page 중 기대 page가 하나 이상 있어야 통과",
-            "quote_rule": (
-                "준비된 PDF page text로 검증 가능한 quote는 quote_grounding 0.8 이상이어야 통과"
+            "quote_boundary": (
+                "모델이 쓴 인용문은 자체 일관성 진단에만 쓰며 PDF text layer와 비교하지 않음"
             ),
         },
         "evaluation_result": {

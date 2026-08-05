@@ -70,9 +70,7 @@ def deterministic_metrics(results: list[EvaluationResult]) -> list[BaseMetric]:
         ("evidence_page_recall", "근거 페이지 recall (진단)", 0.0),
         ("evidence_page_f1", "근거 페이지 F1 (진단)", 0.0),
         ("evidence_coverage", "가능한 근거 페이지", 1.0),
-        ("quote_answer_support", "인용문 답 지지 (진단)", 0.0),
-        ("quote_verifiability", "인용문 검증 가능률 (진단)", 0.0),
-        ("quote_grounding", "근거 문장 PDF 일치 (진단)", 0.0),
+        ("quote_answer_support", "인용문·답 자체 일관성 (진단)", 0.0),
         ("task_success", "전체 성공", 1.0),
     )
     return [
