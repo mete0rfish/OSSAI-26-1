@@ -111,13 +111,9 @@ CATALOG_DATE=2026-08-06
 
 ## 5. 실제 API로 한 사례 실행
 
-실제 호출은 변경 사항이 없는 Git 커밋에서만 허용된다.
-
-```bash
-git status --short
-```
-
-출력이 없어야 한다. 파일을 수정한 상태라면 저장하고 커밋한 뒤 진행한다.
+한 사례 probe는 API 연결과 결과 형식을 확인하는 탐색 실행이다. 작업 파일을 수정한
+상태에서도 실행할 수 있지만 `summary.json`의 상태는 항상 `inconclusive`이며 전체 품질
+근거로 사용하지 않는다.
 
 ```bash
 uv run --locked python scripts/run_nvidia_nim.py \
@@ -143,9 +139,18 @@ uv run --locked python scripts/run_nvidia_nim.py \
 모델 답이 틀리거나 JSON 형식이 깨진 것은 관찰할 품질 결과다. API 오류나 요청 모델과 실제
 처리 모델의 불일치는 품질을 판정할 수 없어 판단 보류(`inconclusive`)로 기록한다.
 
-## 6. 실제 API로 전체 40건 실행
+## 6. 준비된 전체 40건 결과 분석
 
-한 사례에서 API 키, 모델과 결과 저장이 정상임을 확인한 뒤 별도 실행으로 40건을 호출한다.
+전체 40건 호출은 수업 전에 승인된 환경에서 한 번 준비한다. 학습자는 제공된 결과 폴더의
+`summary.json`, `results.jsonl`, `observations.jsonl`을 분석한다.
+
+직접 전체 실행을 승인받은 경우에만 먼저 변경 사항이 없는지 확인한다.
+
+```bash
+git status --short
+```
+
+출력이 없을 때만 다음 명령을 실행한다.
 
 ```bash
 uv run --locked python scripts/run_nvidia_nim.py \
@@ -209,7 +214,7 @@ uv run --locked ruff check .
 ## 완료 기준
 
 - PDF 문장이 아닌 페이지 JPEG와 질문이 모델 입력임을 설명할 수 있다.
-- Nemotron 한 사례와 40건 전체 실행 결과 폴더를 찾을 수 있다.
+- Nemotron 한 사례를 실행하고 준비된 40건 결과 폴더를 분석할 수 있다.
 - 기대 답, 모델 원응답, 필수 지표와 실패 이유를 한 사례에서 연결해 설명할 수 있다.
 - 실제 품질 증거(`live_quality`)와 저장 응답의 시험 전용 증거(`test_only`)를 구분할 수 있다.
 - 모델 기반 채점기 없이 고정 규칙 채점기로 무엇을 판정했는지 설명할 수 있다.

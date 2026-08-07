@@ -53,3 +53,16 @@ def test_live_comparison_uses_model_neutral_improved_prompt(project_root: Path) 
     assert "/no_think" not in prompt
     assert "값과 단위만" in prompt
     assert "두 번째 JSON을 절대 출력하지 않습니다" in prompt
+
+
+def test_probe_and_full_run_use_different_git_clean_rules(project_root: Path) -> None:
+    spec = importlib.util.spec_from_file_location(
+        "compare_live_provider_routes_git_rule_test",
+        project_root / "scripts/compare_live_provider_routes.py",
+    )
+    assert spec is not None and spec.loader is not None
+    module = importlib.util.module_from_spec(spec)
+    spec.loader.exec_module(module)
+
+    assert module._require_clean_git("aihub-report-r01") is False
+    assert module._require_clean_git(None) is True

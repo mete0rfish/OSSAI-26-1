@@ -175,6 +175,20 @@ def _require_approved_provider(settings: LabSettings, config_path: Path) -> None
         )
 
 
+def _with_probe_prompt(settings: LabSettings, supplied_path: str | Path) -> LabSettings:
+    prompt_path = project_path(PROJECT_ROOT, str(supplied_path))
+    local_data = (PROJECT_ROOT / "local-data").resolve()
+    if not prompt_path.is_relative_to(local_data) or not prompt_path.is_file():
+        raise ValueError("학습자 prompt는 local-data 아래의 기존 파일이어야 합니다")
+    return settings.model_copy(
+        update={
+            "paths": settings.paths.model_copy(
+                update={"prompt": prompt_path.relative_to(PROJECT_ROOT).as_posix()}
+            )
+        }
+    )
+
+
 def _sha256_file(path: str | Path) -> str:
     digest = hashlib.sha256()
     with Path(path).open("rb") as handle:
@@ -262,10 +276,11 @@ def _build_provenance(
     cases: list[EvaluationCase],
     input_manifest: dict[str, Any],
     catalog_verified_on: date,
+    require_clean_git: bool,
 ) -> dict[str, Any]:
     git_sha, git_clean = _git_state()
-    if not git_clean:
-        raise RuntimeError("실제 API는 변경사항이 없는 Git commit에서만 실행합니다")
+    if require_clean_git and not git_clean:
+        raise RuntimeError("전체 품질 실행은 변경사항이 없는 Git commit에서만 허용합니다")
 
     component_hashes = {
         relative: _sha256_file(PROJECT_ROOT / relative) for relative in PROVENANCE_COMPONENTS
@@ -556,6 +571,10 @@ def _parser() -> argparse.ArgumentParser:
     parser.add_argument("--max-retries", type=_nonnegative_int, required=True)
     parser.add_argument("--limit", type=_positive_int)
     parser.add_argument("--sample-id", choices=(PROBE_SAMPLE_ID,))
+    parser.add_argument(
+        "--prompt",
+        help="한 사례 probe에서만 사용하는 local-data 아래의 학습자 prompt",
+    )
     parser.add_argument("--trial-id", default="trial-01")
     parser.add_argument("--run-id")
     parser.add_argument("--resume", action="store_true")
@@ -578,11 +597,15 @@ def main() -> int:
         parser.error("새 run_id는 자동 생성됩니다. --run-id는 --resume에만 사용합니다")
     if args.resume and args.sample_id:
         parser.error("--resume에서는 최초 run의 target을 변경할 수 없습니다")
+    if args.prompt and (args.resume or not args.sample_id):
+        parser.error("--prompt는 새 한 사례 probe에서만 사용할 수 있습니다")
     _validate_run_id(args.trial_id)
 
     load_project_env(PROJECT_ROOT)
     config_path = _require_approved_config(args.config)
     settings = load_settings(config_path)
+    if args.prompt:
+        settings = _with_probe_prompt(settings, args.prompt)
     if settings.provider.kind != "litellm":
         raise ValueError("NVIDIA NIM 설정의 provider.kind는 litellm이어야 합니다")
     _require_approved_provider(settings, config_path)
@@ -652,6 +675,7 @@ def main() -> int:
         cases=target_cases,
         input_manifest=input_manifest,
         catalog_verified_on=args.catalog_verified_on,
+        require_clean_git=len(target_cases) > 1,
     )
     run_contract = _immutable_run_contract(
         run_id=run_id,

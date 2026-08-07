@@ -67,14 +67,9 @@ available now: True
 CATALOG_DATE=2026-08-06
 ```
 
-실제 호출 전에 Git 상태도 확인한다.
-
-```bash
-git status --short
-```
-
-출력이 없어야 한다. 추적 중인 파일을 수정했다면 커밋한 뒤 진행한다. `local-data/`와
-`reports/`는 Git에서 제외되므로 수업 결과가 있어도 이 검사에 나타나지 않는다.
+한 사례 probe는 prompt를 수정한 상태에서도 실행할 수 있다. 이 결과는 연결과 출력 변화를
+보는 탐색 실행이며 전체 품질 근거가 아니다. 전체 40건 실행만 변경 사항이 없는 commit에서
+허용한다.
 
 ## 4. Gemma 기준 지시문으로 같은 사례 5회 실행
 
@@ -124,9 +119,10 @@ done
 `inconclusive`다. API 호출 자체가 정상인지 여부는 `observed_status=complete`,
 `provider_error_count=0`, `model_drift_count=0`으로 확인한다.
 
-## 5. Gemma 기준 지시문 전체 실행
+## 5. 준비된 Gemma 기준 지시문 전체 결과 분석
 
-5회 사전 실행에서 API 제공자 오류와 실제 처리 모델 불일치가 없으면 40건을 별도 실행한다.
+수업 전에 승인된 환경에서 만든 40건 결과를 연다. 직접 전체 실행을 승인받은 경우에만
+`git status --short` 출력이 없는지 확인하고 다음 명령을 실행한다.
 
 ```bash
 uv run --locked python scripts/run_nvidia_nim.py \
@@ -146,13 +142,16 @@ uv run --locked python scripts/run_nvidia_nim.py \
 `results.jsonl`에서 필수 지표가 0인 사례를 고르고 같은 `sample_id`의 원응답을
 `observations.jsonl`에서 읽는다.
 
-## 6. 실패를 지시문 변경과 연결하기
+## 6. 실패를 보고 지시문 직접 수정하기
 
-기준 파일은 수정하지 않고 준비된 개선 후보와 비교한다.
+기준 지시문을 Git에서 제외되는 학습자 파일로 복사한다.
 
 ```bash
-diff -u prompts/pdf-question-answer.md prompts/pdf-question-answer-gemma4.md || true
+cp prompts/pdf-question-answer.md local-data/week-02-prompt.md
 ```
+
+`local-data/week-02-prompt.md`를 열고 5회 probe에서 관찰한 실패 하나만 고친다. 채점 기준이나
+질문은 바꾸지 않는다.
 
 개선 후보는 관찰한 실패를 다음 규칙으로 다룬다.
 
@@ -166,16 +165,38 @@ diff -u prompts/pdf-question-answer.md prompts/pdf-question-answer-gemma4.md || 
 채점기가 긴 답에서 기대 숫자만 골라내도록 느슨하게 바꾸지 않는다. 모델이 업무에 필요한
 짧은 답을 내도록 지시문을 바꾸는 실험이다.
 
-저장 응답으로 준비된 대표 변화는 다음 명령에서 먼저 확인한다.
+수정한 지시문으로 같은 사례를 한 번 실행한다. `--prompt`에는 `local-data` 아래 파일만
+사용할 수 있으며 한 사례 probe에서만 허용된다.
 
 ```bash
+uv run --locked python scripts/run_nvidia_nim.py \
+  --config configs/nvidia-nim-gemma4-baseline.yaml \
+  --prompt local-data/week-02-prompt.md \
+  --live \
+  --sample-id aihub-report-r01 \
+  --trial-id week02-my-prompt-probe \
+  --max-requests 1 \
+  --max-input-tokens 20000 \
+  --max-output-tokens 500 \
+  --max-cost-usd 0.01 \
+  --max-wall-seconds 120 \
+  --max-retries 0 \
+  --catalog-verified-on "$CATALOG_DATE"
+```
+
+원응답과 필수 점수를 기준 probe와 비교하고, 고친 규칙이 실제 출력에 어떤 영향을 줬는지
+한 문장으로 기록한다.
+
+준비된 개선안과도 비교한다.
+
+```bash
+diff -u local-data/week-02-prompt.md prompts/pdf-question-answer-gemma4.md || true
 uv run --locked python scripts/inspect_prompt_comparison_case.py
 ```
 
-`baseline`과 `candidate`의 원응답, `task_success`, `classification`을 읽는다.
-이 결과는 저장 응답을 사용하므로 현재 품질 주장이 아니라 코드 학습용이다.
+저장 응답 비교는 현재 모델 품질 주장이 아니라 코드 학습용이다.
 
-## 7. 개선 지시문 확인 실행과 전체 실행
+## 7. 개선 지시문 확인과 준비된 전체 결과 비교
 
 먼저 같은 사례 한 건으로 출력이 의도대로 바뀌었는지 확인한다.
 
@@ -194,8 +215,8 @@ uv run --locked python scripts/run_nvidia_nim.py \
   --catalog-verified-on "$CATALOG_DATE"
 ```
 
-한 건이 성공해도 지시문을 채택하지 않는다. 결과 형식과 API 호출이 정상임을 확인한 뒤
-전체 40건을 실행한다.
+한 건이 성공해도 지시문을 채택하지 않는다. 전체 40건은 수업 전에 승인된 환경에서 한 번
+실행한 기준·개선 결과를 사용한다. 직접 전체 실행을 승인받은 경우에만 아래 명령을 사용한다.
 
 ```bash
 uv run --locked python scripts/run_nvidia_nim.py \
@@ -286,9 +307,10 @@ uv run --locked python scripts/compare_live_provider_routes.py \
 각 폴더의 `summary.json`에서 두 API 제공자가 각각 한 응답을 남겼고, API 오류·출력 형식
 오류·실제 처리 모델 불일치가 모두 0인지 확인한다.
 
-## 10. Gemma와 Gemini 전체 비교
+## 10. 준비된 Gemma와 Gemini 전체 결과 비교
 
-세 사례가 모두 정상일 때만 40건씩 총 80회를 실행한다.
+40건씩 총 80회 호출은 수업 전에 승인된 환경에서 한 번 수행한다. 학습자는 결과를 분석한다.
+직접 전체 실행을 승인받은 경우에만 다음 명령을 사용한다.
 
 ```bash
 uv run --locked python scripts/compare_live_provider_routes.py \
@@ -327,7 +349,8 @@ uv run --locked python scripts/evaluate_recorded_provider_routes.py
 
 - Week 1의 Nemotron에서 Week 2의 Gemma로 바뀐 설정 세 가지를 설명할 수 있다.
 - 같은 Gemma 사례를 기준 지시문으로 5회 실행하고 출력 변동을 표로 정리했다.
-- 기준·개선 지시문 전체 결과에서 새 성공, 새 실패와 비교 불가 사례를 찾았다.
+- 실패 사례를 보고 학습자 지시문을 직접 수정하고 같은 사례를 다시 실행했다.
+- 준비된 기준·개선 지시문 전체 결과에서 새 성공, 새 실패와 비교 불가 사례를 찾았다.
 - 공통 지시문으로 Gemma와 Gemini를 같은 조건에서 비교했다.
 - API 오류와 출력 형식 오류, 정답 실패를 서로 다른 상태로 설명할 수 있다.
 - AIHub 실습에서는 모델 기반 채점기 없이 고정 규칙 채점기를 쓰는 이유를 설명할 수 있다.

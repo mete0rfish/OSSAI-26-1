@@ -114,6 +114,12 @@ def _probe_succeeded(execution) -> bool:
     )
 
 
+def _require_clean_git(probe_sample_id: str | None) -> bool:
+    """한 사례 probe는 탐색용으로 허용하고 전체 비교만 clean commit을 요구한다."""
+
+    return probe_sample_id is None
+
+
 def main() -> int:
     parser = argparse.ArgumentParser(description="Week 2 두 API 제공자 실제 비교")
     parser.add_argument("--config", default=CANONICAL_CONFIG)
@@ -159,6 +165,7 @@ def main() -> int:
             catalog_verified_on=args.catalog_verified_on,
             output_dir=args.output,
             probe_sample_id=args.probe_sample_id,
+            require_clean_git=_require_clean_git(args.probe_sample_id),
         )
     except (
         ValidationError,
