@@ -1,4 +1,4 @@
-"""의도적으로 깨뜨린 응답이 예상 metric을 실패시키는지 확인한다."""
+"""의도적으로 깨뜨린 응답이 예상 평가지표(metric)를 실패시키는지 확인한다."""
 
 from __future__ import annotations
 

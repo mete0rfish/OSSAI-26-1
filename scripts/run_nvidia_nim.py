@@ -43,14 +43,10 @@ PROJECT_ROOT = Path(__file__).resolve().parents[1]
 CANONICAL_CONFIG = "configs/nvidia-nim.yaml"
 GEMMA_BASELINE_CONFIG = "configs/nvidia-nim-gemma4-baseline.yaml"
 GEMMA_IMPROVED_CONFIG = "configs/nvidia-nim-gemma4.yaml"
-KIMI_CONFIG = "configs/nvidia-nim-kimi-k2.6.yaml"
-DIFFUSIONGEMMA_CONFIG = "configs/nvidia-nim-diffusiongemma.yaml"
 APPROVED_CONFIGS = (
     CANONICAL_CONFIG,
     GEMMA_BASELINE_CONFIG,
     GEMMA_IMPROVED_CONFIG,
-    KIMI_CONFIG,
-    DIFFUSIONGEMMA_CONFIG,
 )
 CANONICAL_CASE_AUTHORING = "data/cases/week-01-aihub.yaml"
 NVIDIA_API_BASE = "https://integrate.api.nvidia.com/v1"
@@ -67,14 +63,6 @@ APPROVED_MODELS_BY_CONFIG = {
     GEMMA_IMPROVED_CONFIG: (
         "nvidia_nim/google/gemma-4-31b-it",
         "google/gemma-4-31b-it",
-    ),
-    KIMI_CONFIG: (
-        "nvidia_nim/moonshotai/kimi-k2.6",
-        "moonshotai/kimi-k2.6",
-    ),
-    DIFFUSIONGEMMA_CONFIG: (
-        "nvidia_nim/google/diffusiongemma-26b-a4b-it",
-        "google/diffusiongemma-26b-a4b-it",
     ),
 }
 PROBE_SAMPLE_ID = "aihub-report-r01"
@@ -638,8 +626,6 @@ def main() -> int:
         prefix = {
             Path(GEMMA_BASELINE_CONFIG).name: "week02-gemma-baseline",
             Path(GEMMA_IMPROVED_CONFIG).name: "week02-gemma-improved",
-            Path(KIMI_CONFIG).name: "week02-kimi",
-            Path(DIFFUSIONGEMMA_CONFIG).name: "week02-diffusiongemma",
         }.get(config_path.name, "week01")
         run_id = _new_run_id(prefix)
         target_cases = all_cases

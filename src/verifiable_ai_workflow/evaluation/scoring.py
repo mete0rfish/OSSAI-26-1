@@ -1,4 +1,4 @@
-"""VLM 응답을 구조, 정답, 답변 보류와 근거 페이지로 결정적으로 평가한다."""
+"""VLM 응답을 구조, 정답, 답변 보류와 근거 페이지 고정 규칙으로 평가한다."""
 
 from __future__ import annotations
 
@@ -13,6 +13,25 @@ from pydantic import ValidationError
 from ..schemas import EvaluationCase, EvaluationResult, ModelObservation, StructuredAnswer
 
 SCORING_PROFILE = "aihub-vqa-deterministic-v2"
+PASS_REQUIREMENTS = (
+    "schema_validity",
+    "abstention_correct",
+    "answer_correct",
+    "evidence_coverage",
+)
+DIAGNOSTIC_METRICS = (
+    "json_object_only",
+    "answer_exact",
+    "answer_similarity",
+    "answer_anls",
+    "answer_token_f1",
+    "numeric_match",
+    "evidence_page_precision",
+    "evidence_page_recall",
+    "evidence_page_f1",
+    "quote_answer_support",
+)
+SCORE_NAMES = (*PASS_REQUIREMENTS, *DIAGNOSTIC_METRICS, "task_success")
 
 
 def _normalize(text: str) -> str:
@@ -166,12 +185,13 @@ def score_output(
         sum(quote_answer_scores) / len(quote_answer_scores) if quote_answer_scores else 0.0
     )
 
-    task_success = float(
-        schema_validity == 1.0
-        and abstention_correct == 1.0
-        and answer_correct == 1.0
-        and evidence_coverage == 1.0
-    )
+    required_scores = {
+        "schema_validity": schema_validity,
+        "abstention_correct": abstention_correct,
+        "answer_correct": answer_correct,
+        "evidence_coverage": evidence_coverage,
+    }
+    task_success = float(all(required_scores[name] == 1.0 for name in PASS_REQUIREMENTS))
     scores = {
         "json_object_only": json_object_only,
         "schema_validity": schema_validity,
@@ -196,22 +216,23 @@ def score_output(
             else "Markdown fence 또는 부가 텍스트가 있어 정리 후 파싱"
         ),
         "schema_validity": schema_reason,
-        "answer_exact": f"actual={actual_answer!r}, expected={case.expected.answer!r}",
-        "answer_similarity": f"normalized character similarity={answer_similarity:.4f}",
+        "answer_exact": f"실제 답={actual_answer!r}, 기대 답={case.expected.answer!r}",
+        "answer_similarity": f"정규화 문자 유사도={answer_similarity:.4f}",
         "answer_anls": f"DocVQA ANLS={answer_anls:.4f}",
-        "answer_token_f1": f"answer token F1={answer_token_f1:.4f}",
-        "numeric_match": (f"actual_numbers={actual_numbers}, expected_numbers={expected_numbers}"),
+        "answer_token_f1": f"답 토큰 F1={answer_token_f1:.4f}",
+        "numeric_match": f"실제 숫자={actual_numbers}, 기대 숫자={expected_numbers}",
         "abstention_correct": (
-            f"actual={answer.abstained if answer else None}, expected={case.expected.abstained}"
+            f"실제 보류={answer.abstained if answer else None}, "
+            f"기대 보류={case.expected.abstained}"
         ),
         "answer_correct": "정답 허용 기준 통과" if answer_correct else "정답 허용 기준 실패",
         "evidence_page_precision": (
-            f"actual_pages={sorted(actual_pages)}, expected_pages={sorted(expected_pages)}"
+            f"실제 페이지={sorted(actual_pages)}, 기대 페이지={sorted(expected_pages)}"
         ),
         "evidence_page_recall": (
-            f"actual_pages={sorted(actual_pages)}, expected_pages={sorted(expected_pages)}"
+            f"실제 페이지={sorted(actual_pages)}, 기대 페이지={sorted(expected_pages)}"
         ),
-        "evidence_page_f1": f"page F1={page_f1:.4f}",
+        "evidence_page_f1": f"페이지 F1={page_f1:.4f}",
         "evidence_coverage": (
             "가능한 근거 페이지를 하나 이상 인용"
             if evidence_coverage
@@ -235,24 +256,7 @@ def score_observations(
     for observation in observations:
         case = case_by_id[observation.sample_id]
         if observation.model_error:
-            score_names = (
-                "json_object_only",
-                "schema_validity",
-                "answer_exact",
-                "answer_similarity",
-                "answer_anls",
-                "answer_token_f1",
-                "numeric_match",
-                "abstention_correct",
-                "answer_correct",
-                "evidence_page_precision",
-                "evidence_page_recall",
-                "evidence_page_f1",
-                "evidence_coverage",
-                "quote_answer_support",
-                "task_success",
-            )
-            scores = dict.fromkeys(score_names, 0.0)
+            scores = dict.fromkeys(SCORE_NAMES, 0.0)
             results.append(
                 EvaluationResult(
                     sample_id=case.sample_id,

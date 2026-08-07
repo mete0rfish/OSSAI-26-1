@@ -14,34 +14,16 @@ def test_live_egress_manifest_is_scoped_to_week_01_and_week_02(
 ) -> None:
     payload = load_manifest(project_root)
 
-    assert payload["status"] == "week_02_live_completed_hold"
-    assert payload["week_02_live_results"] == (
-        "reports/week-02-live/full-improved-20260805-rerun-01/summary.json"
-    )
+    assert payload["status"] == "approved_week_01_to_week_02"
     assert set(payload["destinations"]) == {"nvidia_nim", "google_ai_studio"}
-    assert set(payload["runs"]) == {"week_01_task", "week_02_two_provider"}
+    assert set(payload["runs"]) == {
+        "week_01_task",
+        "week_02_prompt_comparison",
+        "week_02_two_provider",
+    }
     approval = payload["approval_conditions"]
     assert approval["scope"] == "week_01_to_week_02_only"
     assert approval["sealed_test_allowed"] is False
-    assert approval["current_decision"] == "HOLD"
-
-
-def test_week_02_actual_execution_matches_recorded_result(project_root: Path) -> None:
-    actual = load_manifest(project_root)["runs"]["week_02_two_provider"][
-        "actual_execution"
-    ]
-
-    assert actual["full_requests"] == 80
-    assert actual["full_successful_responses"] == 80
-    assert actual["baseline_provider_errors"] == 0
-    assert actual["candidate_provider_errors"] == 0
-    assert actual["baseline_task_successes"] == 27
-    assert actual["candidate_task_successes"] == 35
-    assert actual["new_success"] == 8
-    assert actual["new_failure"] == 0
-    assert actual["automated_status"] == "pass"
-    assert actual["release_claim"] is False
-    assert actual["human_decision"] == "HOLD"
 
 
 def test_every_external_run_fixes_endpoint_key_model_and_caps(

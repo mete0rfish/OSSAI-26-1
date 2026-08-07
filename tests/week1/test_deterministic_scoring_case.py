@@ -30,62 +30,43 @@ def test_week01_case_walkthrough_shows_input_output_expected_and_score(
     (document_root / "manifest.json").write_text(
         json.dumps(
             {
-                "source_sha256": "fixture-source-sha256",
-                "total_pages": 1,
                 "pages": [
                     {
                         "page_number": 1,
                         "model_image_path": "model-pages/page-0001.jpg",
                     }
-                ],
+                ]
             }
         ),
         encoding="utf-8",
     )
+
     assert module.main() == 0
     payload = json.loads(capsys.readouterr().out)
 
     assert list(payload) == [
-        "week",
-        "case_id",
-        "evidence_boundary",
+        "sample_id",
         "input",
         "model_output",
         "expected",
-        "evaluation_design",
-        "evaluation_result",
+        "scoring",
+        "evidence_kind",
     ]
-    assert payload["week"] == 1
-    assert payload["case_id"] == "aihub-report-r01"
+    assert payload["sample_id"] == "aihub-report-r04"
     assert payload["input"]["question"] == (
-        "2016년 말 은행 가계대출 중 변동금리 비중은 얼마인가요?"
+        "2017년 상반기 민간소비 증가율은 얼마인가요?"
     )
-    prepared = payload["input"]["prepared_document"]
-    assert prepared["source_sha256"] == "fixture-source-sha256"
-    assert prepared["page_images_for_live_request"] == [
-        {
-            "page_number": 1,
-            "path": ("local-data/aihub/prepared/MI2_240819_TY1_0012/model-pages/page-0001.jpg"),
-            "bytes": 10,
-            "sha256": "0111dbc398b94eacda6759809c050530868ee7e313b3381c2f95ce8b55331c50",
-        }
-    ]
-    assert prepared["expected_page_reference"] == {
-        "page_number": 1,
-        "image_path": (
-            "local-data/aihub/prepared/MI2_240819_TY1_0012/model-pages/page-0001.jpg"
-        ),
-    }
+    assert payload["input"]["page_image_count"] == 1
+    assert payload["input"]["expected_page_image"] == (
+        "local-data/aihub/prepared/MI2_240819_TY1_0012/model-pages/page-0001.jpg"
+    )
     assert isinstance(payload["model_output"]["raw_response"], str)
-    assert payload["model_output"]["parsed_answer"]["answer"] == (
-        "2016년 말 기준 은행 가계대출 중 변동금리 비중은 71.6%입니다."
-    )
+    assert payload["model_output"]["parsed_answer"]["answer"] == "2.7"
     assert payload["expected"] == {
-        "answer": "71.6%",
+        "answer": "2.0%",
         "pages": [1],
         "abstained": False,
     }
-    assert payload["evaluation_result"]["scores"]["task_success"] == 0.0
-    assert payload["evaluation_result"]["status"] == "failed"
-    assert payload["evidence_boundary"]["evidence_kind"] == "test_only"
-    assert payload["evidence_boundary"]["live_quality_claim"] is False
+    assert payload["scoring"]["task_success"] == 0.0
+    assert payload["scoring"]["failed_requirements"]
+    assert payload["evidence_kind"] == "test_only"

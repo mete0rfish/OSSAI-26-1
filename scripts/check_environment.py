@@ -1,4 +1,4 @@
-"""Python과 Week 1 필수 package 설치를 확인한다."""
+"""Python과 Week 1 필수 패키지 설치를 확인한다."""
 
 from __future__ import annotations
 
@@ -18,7 +18,6 @@ def main() -> int:
         "python-dotenv",
         "litellm",
         "deepeval",
-        "jupyterlab",
     )
     versions = {name: importlib.metadata.version(name) for name in packages}
     print(f"Python: {sys.version.split()[0]}")

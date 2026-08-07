@@ -49,34 +49,6 @@ def test_gemma_prompt_candidate_has_separate_paths_and_same_live_model(
     assert not (project_root / "configs/week-01-gemma4.yaml").exists()
 
 
-def test_kimi_config_uses_reviewed_model_and_instant_mode(project_root: Path) -> None:
-    settings = load_settings(project_root / "configs/nvidia-nim-kimi-k2.6.yaml")
-
-    assert settings.provider.model == "nvidia_nim/moonshotai/kimi-k2.6"
-    assert settings.provider.expected_actual_model == "moonshotai/kimi-k2.6"
-    assert settings.provider.temperature == 0.6
-    assert settings.provider.top_p == 0.95
-    assert settings.provider.seed == 0
-    assert settings.provider.thinking_mode == "disabled"
-    assert settings.paths.prompt == "prompts/pdf-question-answer-json-only.md"
-    assert settings.limits.max_requests == 40
-
-
-def test_diffusiongemma_config_uses_multilingual_document_model(
-    project_root: Path,
-) -> None:
-    settings = load_settings(project_root / "configs/nvidia-nim-diffusiongemma.yaml")
-
-    assert settings.provider.model == "nvidia_nim/google/diffusiongemma-26b-a4b-it"
-    assert settings.provider.expected_actual_model == "google/diffusiongemma-26b-a4b-it"
-    assert settings.provider.temperature == 1.0
-    assert settings.provider.top_p == 0.95
-    assert settings.provider.thinking_mode == "disabled"
-    assert settings.provider.thinking_parameter == "chat_template"
-    assert settings.provider.max_images_per_prompt == 8
-    assert settings.limits.max_requests == 40
-
-
 def test_api_key_is_read_only_from_environment(
     monkeypatch: pytest.MonkeyPatch,
 ) -> None:

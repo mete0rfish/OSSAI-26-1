@@ -1,4 +1,4 @@
-"""저장된 40건 route 비교와 여섯 provider fault를 API 없이 실행한다."""
+"""저장된 40건 호출 경로(route)와 여섯 API 장애 상황을 비교한다."""
 
 from __future__ import annotations
 

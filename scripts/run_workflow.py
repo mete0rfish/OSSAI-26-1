@@ -1,4 +1,4 @@
-"""저장 응답 provider로 Week 1 workflow를 실행한다."""
+"""저장 응답 제공자(provider)로 Week 1 작업 흐름(workflow)을 실행한다."""
 
 from __future__ import annotations
 

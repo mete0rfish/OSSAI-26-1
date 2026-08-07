@@ -29,14 +29,15 @@ local-data/aihub/source/
 다른 위치에 데이터를 두었다면 경로를 직접 지정할 수 있다.
 
 ```bash
-uv run python scripts/prepare_documents.py \
-  --source-dir "<멀티모달 정보검색 데이터_Sample 경로>"
+AIHUB_SOURCE_DIR="/내려받은/멀티모달 정보검색 데이터_Sample"
+uv run --locked python scripts/prepare_documents.py \
+  --source-dir "$AIHUB_SOURCE_DIR"
 ```
 
 ## PDF 준비하기
 
 ```bash
-uv run python scripts/prepare_documents.py
+uv run --locked python scripts/prepare_documents.py
 ```
 
 명령을 실행하면 PDF의 각 페이지가 사람이 확인하는 PNG, API용 JPEG와 라벨 작성·점검용
@@ -62,7 +63,7 @@ local-data/aihub/prepared/
 사람이 읽고 수정하는 질문은 `data/cases/week-01-aihub.yaml`에 있다.
 
 ```bash
-uv run python scripts/prepare_cases.py
+uv run --locked python scripts/prepare_cases.py
 ```
 
 명령을 실행하면 작업 흐름(workflow)이 읽을 `local-data/aihub/cases.jsonl`이 만들어진다.

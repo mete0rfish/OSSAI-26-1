@@ -1,4 +1,4 @@
-"""Week 1의 결정적 정량 점수를 로컬 DeepEval TestRun으로 저장한다."""
+"""Week 1의 고정 규칙 점수를 로컬 DeepEval 평가 실행으로 저장한다."""
 
 from __future__ import annotations
 
@@ -62,12 +62,12 @@ def deterministic_metrics(results: list[EvaluationResult]) -> list[BaseMetric]:
         ("answer_exact", "정답 완전일치 (진단)", 0.0),
         ("answer_similarity", "정답 문자 유사도 (진단)", 0.0),
         ("answer_anls", "DocVQA ANLS (진단)", 0.0),
-        ("answer_token_f1", "정답 token F1 (진단)", 0.0),
+        ("answer_token_f1", "정답 토큰 F1 (진단)", 0.0),
         ("numeric_match", "숫자 일치 (진단)", 0.0),
         ("abstention_correct", "답변 보류", 1.0),
         ("answer_correct", "정답 허용 기준", 1.0),
-        ("evidence_page_precision", "근거 페이지 precision (진단)", 0.0),
-        ("evidence_page_recall", "근거 페이지 recall (진단)", 0.0),
+        ("evidence_page_precision", "근거 페이지 정밀도(precision) (진단)", 0.0),
+        ("evidence_page_recall", "근거 페이지 재현율(recall) (진단)", 0.0),
         ("evidence_page_f1", "근거 페이지 F1 (진단)", 0.0),
         ("evidence_coverage", "가능한 근거 페이지", 1.0),
         ("quote_answer_support", "인용문·답 자체 일관성 (진단)", 0.0),

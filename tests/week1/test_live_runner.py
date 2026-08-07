@@ -87,12 +87,6 @@ def test_live_runner_allows_only_reviewed_nvidia_configs(
     assert live_runner._require_approved_config(
         "configs/nvidia-nim-gemma4-baseline.yaml"
     ) == (project_root / "configs/nvidia-nim-gemma4-baseline.yaml")
-    assert live_runner._require_approved_config("configs/nvidia-nim-kimi-k2.6.yaml") == (
-        project_root / "configs/nvidia-nim-kimi-k2.6.yaml"
-    )
-    assert live_runner._require_approved_config("configs/nvidia-nim-diffusiongemma.yaml") == (
-        project_root / "configs/nvidia-nim-diffusiongemma.yaml"
-    )
 
     with pytest.raises(LiveExecutionError, match="승인된 NVIDIA NIM 설정"):
         live_runner._require_approved_config("configs/week-01.yaml")

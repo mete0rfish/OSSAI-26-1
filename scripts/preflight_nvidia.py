@@ -11,46 +11,6 @@ from verifiable_ai_workflow.config import load_project_env, load_settings, requi
 
 PROJECT_ROOT = Path(__file__).resolve().parents[1]
 CATALOG_URL = "https://integrate.api.nvidia.com/v1/models"
-CATALOG_MODELS = (
-    (
-        "multimodal",
-        "nvidia/nemotron-3-nano-omni-30b-a3b-reasoning",
-        "English only",
-    ),
-    ("multimodal", "nvidia/nemotron-nano-12b-v2-vl", "English only"),
-    (
-        "multimodal",
-        "meta/llama-3.2-11b-vision-instruct",
-        "image+text: English only",
-    ),
-    (
-        "multimodal",
-        "google/diffusiongemma-26b-a4b-it",
-        "multilingual",
-    ),
-    ("multimodal", "google/gemma-4-31b-it", "35+ languages; pre-trained on 140+"),
-    (
-        "multimodal",
-        "minimaxai/minimax-m3",
-        "official list not specified",
-    ),
-    (
-        "multimodal",
-        "stepfun-ai/step-3.7-flash",
-        "official list not specified",
-    ),
-    (
-        "multimodal",
-        "meta/llama-3.2-90b-vision-instruct",
-        "image+text: English only",
-    ),
-    ("multimodal", "moonshotai/kimi-k2.6", "official list not specified"),
-    ("text", "openai/gpt-oss-20b", "official list not specified"),
-    ("text", "deepseek-ai/deepseek-v4-flash", "official list not specified"),
-    ("text", "deepseek-ai/deepseek-v4-pro", "official list not specified"),
-)
-
-
 def main() -> int:
     parser = argparse.ArgumentParser(description="NVIDIA NIM 모델 목록 사전 확인")
     parser.add_argument("--config", default="configs/nvidia-nim.yaml")
@@ -71,9 +31,6 @@ def main() -> int:
     configured = settings.provider.model.removeprefix("nvidia_nim/")
     print(f"configured model: {configured}")
     print(f"available now: {configured in available}")
-    print("catalog models:")
-    for category, model, languages in CATALOG_MODELS:
-        print(f"- [{category}] {model}: {model in available}; languages={languages}")
     return 0 if configured in available else 1
 
 

@@ -25,7 +25,7 @@ def _load_observations(path: Path) -> list[ModelObservation]:
 
 
 def main() -> int:
-    parser = argparse.ArgumentParser(description="Week 1 결정적 평가")
+    parser = argparse.ArgumentParser(description="Week 1 고정 규칙 평가")
     parser.add_argument("--config", default="configs/week-01.yaml")
     args = parser.parse_args()
 

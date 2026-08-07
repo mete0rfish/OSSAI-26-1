@@ -1,4 +1,4 @@
-"""같은 Gemma 4의 기준 prompt와 후보 prompt live run을 비교한다."""
+"""같은 Gemma 4의 기준·후보 지시문(prompt) 실제 실행을 비교한다."""
 
 from __future__ import annotations
 
@@ -12,7 +12,7 @@ PROJECT_ROOT = Path(__file__).resolve().parents[1]
 
 
 def main() -> int:
-    parser = argparse.ArgumentParser(description="Gemma prompt A/B 비교")
+    parser = argparse.ArgumentParser(description="Gemma 지시문(prompt) A/B 비교")
     parser.add_argument("--baseline-run", required=True)
     parser.add_argument("--candidate-run", required=True)
     parser.add_argument(
@@ -22,7 +22,7 @@ def main() -> int:
     parser.add_argument(
         "--rescore-current",
         action="store_true",
-        help="저장 점수 대신 raw observation을 현재 결정적 채점기로 다시 계산합니다",
+        help="저장 점수 대신 원응답을 현재 고정 규칙 채점기로 다시 계산합니다",
     )
     parser.add_argument(
         "--case-authoring",

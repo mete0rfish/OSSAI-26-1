@@ -16,8 +16,6 @@ dependencies = [
 
 [dependency-groups]
 dev = [
-  "jupyterlab>=4.6,<5",
-  "nbconvert>=7.16,<8",
   "pytest>=9.1.1,<10",
   "ruff>=0.15.20,<0.16",
 ]
