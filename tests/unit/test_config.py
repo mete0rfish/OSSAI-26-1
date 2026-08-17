@@ -27,6 +27,7 @@ def test_nvidia_nim_config_is_ready_for_live_batch(project_root: Path) -> None:
     )
     assert settings.provider.billing_basis == "developer_program_free_endpoint"
     assert settings.provider.structured_output == "prompt_only"
+    assert settings.provider.billing_basis == "developer_program_free_endpoint"
     assert settings.limits.max_requests == 40
     assert settings.limits.requests_per_minute < 40
     assert settings.limits.request_output_token_ceiling == 500
@@ -45,7 +46,7 @@ def test_gemma_prompt_candidate_has_separate_paths_and_same_live_model(
     assert candidate.paths.prepared_documents == baseline.paths.prepared_documents
     assert candidate.paths.prompt != baseline.paths.prompt
     assert candidate.paths.output != baseline.paths.output
-    assert candidate.paths.recorded_responses != baseline.paths.recorded_responses
+    assert candidate.paths.recorded_responses is None
     assert not (project_root / "configs/week-01-gemma4.yaml").exists()
 
 

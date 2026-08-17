@@ -47,13 +47,14 @@ def test_nvidia_response_reaches_deepeval(
         "verifiable_ai_workflow.providers.litellm_provider.litellm.completion",
         lambda **kwargs: SimpleNamespace(
             id="response-1",
-            model="nvidia_nim/google/gemma-4-31b-it",
+            model="nvidia/nemotron-3-nano-omni-30b-a3b-reasoning",
             usage=SimpleNamespace(prompt_tokens=100, completion_tokens=20),
             choices=[SimpleNamespace(message=SimpleNamespace(content=json.dumps(response)))],
         ),
     )
     provider = LiteLLMProvider(
-        model="nvidia_nim/google/gemma-4-31b-it",
+        model="nvidia_nim/nvidia/nemotron-3-nano-omni-30b-a3b-reasoning",
+        expected_actual_model="nvidia/nemotron-3-nano-omni-30b-a3b-reasoning",
         api_key_env="NVIDIA_NIM_API_KEY",
         api_base="https://integrate.api.nvidia.com/v1",
         structured_output="prompt_only",

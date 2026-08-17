@@ -1,7 +1,7 @@
 [project]
 name = "verifiable-ai-workflow-lab"
 version = "0.1.0"
-description = "AIHub PDF 질문 답변과 DeepEval 평가 실습"
+description = "문서·차트 기반 AI workflow 평가 실습"
 readme = "README.md"
 requires-python = ">=3.12,<3.13"
 dependencies = [
@@ -29,6 +29,7 @@ packages = ["src/verifiable_ai_workflow"]
 
 [tool.pytest.ini_options]
 addopts = "-q -p no:rerunfailures"
+pythonpath = ["."]
 testpaths = ["tests"]
 
 [tool.ruff]

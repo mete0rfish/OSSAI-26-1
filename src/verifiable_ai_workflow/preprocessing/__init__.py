@@ -6,6 +6,7 @@ from .pdf import (
     load_document,
     prepare_directory,
     prepare_pdf,
+    save_model_image,
 )
 
 __all__ = [
@@ -14,4 +15,5 @@ __all__ = [
     "load_document",
     "prepare_directory",
     "prepare_pdf",
+    "save_model_image",
 ]

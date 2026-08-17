@@ -23,7 +23,6 @@ provider:
   structured_output: prompt_only
   billing_basis: developer_program_free_endpoint
   pricing_source_url: https://docs.api.nvidia.com/nim/docs/product
-  pricing_verified_on: 2026-07-30
   input_cost_per_token_usd: 0.0
   output_cost_per_token_usd: 0.0
 

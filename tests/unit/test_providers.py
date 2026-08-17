@@ -1,13 +1,33 @@
+import importlib
 import json
 from datetime import UTC, datetime, timedelta
 from pathlib import Path
 from types import SimpleNamespace
 
 import pytest
+from pydantic import BaseModel
 
 from verifiable_ai_workflow.live_execution import LiveBudgetExceeded
+from verifiable_ai_workflow.providers import litellm_provider
 from verifiable_ai_workflow.providers.litellm_provider import LiteLLMProvider
 from verifiable_ai_workflow.providers.recorded import RecordedProvider
+
+litellm = litellm_provider.litellm
+
+
+def test_flash_lite_adapter_preserves_vision_schema_and_omits_sampling() -> None:
+    importlib.reload(litellm_provider)
+    model = "gemini/gemini-3.5-flash-lite"
+
+    assert litellm.supports_vision(model=model)
+    assert litellm.supports_response_schema(model=model)
+    mapped = litellm.GoogleAIStudioGeminiConfig().map_openai_params(
+        non_default_params={},
+        optional_params={},
+        model="gemini-3.5-flash-lite",
+        drop_params=False,
+    )
+    assert not {"temperature", "top_p", "top_k"} & mapped.keys()
 
 
 def test_recorded_provider_returns_response(project_root: Path) -> None:
@@ -84,6 +104,52 @@ def test_litellm_provider_requests_strict_json_schema(
     assert captured["response_format"]["type"] == "json_schema"
     with pytest.raises(RuntimeError, match="상한 1건"):
         provider.generate("sample-2", [{"role": "user", "content": "질문"}])
+
+
+def test_litellm_provider_accepts_judge_response_schema(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    class Winner(BaseModel):
+        winner: str
+
+    monkeypatch.setenv("TEST_TASK_KEY", "test-key")
+    captured: dict[str, object] = {}
+
+    def fake_completion(**kwargs):
+        captured.update(kwargs)
+        return SimpleNamespace(
+            id="response-1",
+            model="test/model",
+            usage=SimpleNamespace(prompt_tokens=10, completion_tokens=5),
+            choices=[SimpleNamespace(message=SimpleNamespace(content='{"winner":"a"}'))],
+        )
+
+    monkeypatch.setattr(
+        "verifiable_ai_workflow.providers.litellm_provider.litellm.completion",
+        fake_completion,
+    )
+    monkeypatch.setattr(
+        "verifiable_ai_workflow.providers.litellm_provider.litellm.cost_per_token",
+        lambda **kwargs: (0.0, 0.0),
+    )
+    provider = LiteLLMProvider(
+        model="test/model",
+        api_key_env="TEST_TASK_KEY",
+        api_base=None,
+        structured_output="json_schema",
+        max_requests=1,
+        requests_per_minute=1200,
+        max_retries=0,
+        retry_initial_seconds=1,
+        max_cost_usd=0.1,
+        max_input_tokens=100,
+        max_output_tokens=50,
+        max_wall_seconds=45,
+    )
+
+    provider.generate("pair-1", [{"role": "user", "content": "judge"}], response_schema=Winner)
+
+    assert captured["response_format"]["json_schema"]["name"] == "Winner"
 
 
 def test_resume_preserves_rate_interval_before_first_network_attempt(
@@ -246,6 +312,7 @@ def test_nvidia_nim_uses_api_base_and_prompt_structured_output(
     assert captured["temperature"] == 0.6
     assert captured["top_p"] == 0.95
     assert captured["seed"] == 0
+    assert provider.last_call["request_parameters"]["sampling_parameters"] == "explicit"
     assert captured["extra_body"] == expected_extra_body
     assert "response_format" not in captured
     assert provider.last_call["reported_actual_model"] == "nvidia_nim/nvidia/example-vlm"
@@ -307,20 +374,26 @@ def test_live_provider_redacts_key_if_provider_echoes_it(
     assert "[REDACTED]" in content
 
 
-def test_rate_limit_error_waits_and_retries(monkeypatch: pytest.MonkeyPatch) -> None:
+@pytest.mark.parametrize("status_code", [429, 500])
+def test_transient_error_waits_and_retries(
+    monkeypatch: pytest.MonkeyPatch,
+    status_code: int,
+) -> None:
     monkeypatch.setenv("TEST_TASK_KEY", "test-key")
     calls = 0
     waits: list[float] = []
 
-    class RateLimited(Exception):
-        status_code = 429
+    class TransientError(Exception):
+        pass
 
     def fake_completion(**kwargs):
         nonlocal calls
         del kwargs
         calls += 1
         if calls == 1:
-            raise RateLimited("429")
+            error = TransientError(str(status_code))
+            error.status_code = status_code
+            raise error
         return SimpleNamespace(
             id="response-2",
             model="test/model",

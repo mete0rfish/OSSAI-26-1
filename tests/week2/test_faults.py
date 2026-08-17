@@ -1,10 +1,24 @@
+import subprocess
+import sys
 from pathlib import Path
 
-from verifiable_ai_workflow.provider_evaluation import (
+from verifiable_ai_workflow.provider_faults import (
     load_fault_scenarios,
     rehearse_fault_scenario,
     rehearse_faults,
 )
+
+
+def test_fault_rehearsal_rejects_unknown_argument(project_root: Path) -> None:
+    completed = subprocess.run(
+        [sys.executable, project_root / "scripts/rehearse_provider_faults.py", "--unknown"],
+        capture_output=True,
+        check=False,
+        text=True,
+    )
+
+    assert completed.returncode == 2
+    assert "unrecognized arguments: --unknown" in completed.stderr
 
 
 def test_six_fault_scenarios_keep_quality_and_availability_separate(

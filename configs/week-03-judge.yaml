@@ -1,0 +1,3 @@
+provider_config: configs/google-gemini-3.5-flash-lite-judge.yaml
+rubric: configs/week-03-judge-rubric.yaml
+structured_output: json_schema

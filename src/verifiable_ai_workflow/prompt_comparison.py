@@ -3,6 +3,7 @@
 from __future__ import annotations
 
 import json
+import math
 from collections import Counter
 from pathlib import Path
 from typing import Any, Literal
@@ -29,7 +30,6 @@ METRIC_NAMES = (
     "schema_validity",
     "json_object_only",
     "numeric_match",
-    "evidence_page_f1",
     "quote_answer_support",
 )
 
@@ -122,12 +122,13 @@ def _rescore_run(run_dir: str | Path, case_authoring_path: str | Path) -> list[E
 
 def _run_problems(
     label: str,
+    run_dir: str | Path,
     summary: dict[str, Any],
+    manifest: dict[str, Any],
     results: list[EvaluationResult],
 ) -> list[str]:
     problems: list[str] = []
     expected_checks = {
-        "status": "complete",
         "observed_status": "complete",
         "probe_only": False,
         "evidence_kind": "live_quality",
@@ -142,6 +143,15 @@ def _run_problems(
         if summary.get(field) != expected:
             problems.append(f"{label} {field}={summary.get(field)!r}, expected={expected!r}")
 
+    expected_status = (
+        "pass" if results and all(result.scores.get("task_success") == 1.0 for result in results)
+        else "fail"
+    )
+    if summary.get("status") != expected_status:
+        problems.append(
+            f"{label} status={summary.get('status')!r}, expected={expected_status!r}"
+        )
+
     record_count = summary.get("record_count")
     target_count = summary.get("target_count")
     if record_count != target_count or record_count != len(results):
@@ -150,7 +160,57 @@ def _run_problems(
             f"target={target_count}, results={len(results)}"
         )
     if target_count != 40:
-        problems.append(f"{label} Week 1 전체 40건 실행이 아닙니다: {target_count}")
+        problems.append(f"{label} AIHub 전체 40건 실행이 아닙니다: {target_count}")
+
+    caps = (manifest.get("contract") or {}).get("caps")
+    expected_caps = {
+        "max_requests": 40,
+        "max_attempts": 40,
+        "max_input_tokens": 800000,
+        "max_output_tokens": 20000,
+        "max_cost_usd": 0.01,
+        "max_wall_seconds": 7200.0,
+    }
+    if caps != expected_caps:
+        problems.append(f"{label} 승인 상한이 Week 2 full 계약과 다릅니다")
+    budget = summary.get("budget")
+    if not isinstance(budget, dict):
+        problems.append(f"{label} summary budget이 없습니다")
+    else:
+        if manifest.get("budget") != budget:
+            problems.append(f"{label} summary와 run manifest의 budget이 다릅니다")
+        for field, cap_field in (
+            ("reserved_input_tokens", "max_input_tokens"),
+            ("actual_input_tokens", "max_input_tokens"),
+            ("charged_input_tokens", "max_input_tokens"),
+            ("reserved_output_tokens", "max_output_tokens"),
+            ("actual_output_tokens", "max_output_tokens"),
+            ("charged_output_tokens", "max_output_tokens"),
+            ("reserved_cost_usd", "max_cost_usd"),
+            ("actual_cost_usd", "max_cost_usd"),
+            ("charged_cost_usd", "max_cost_usd"),
+            ("wall_seconds", "max_wall_seconds"),
+        ):
+            value = budget.get(field)
+            cap = expected_caps[cap_field]
+            if (
+                not isinstance(value, (int, float))
+                or isinstance(value, bool)
+                or not math.isfinite(value)
+                or value < 0
+                or value > cap
+            ):
+                problems.append(f"{label} budget {field}={value!r}, 상한={cap!r}")
+        for field, expected in (("request_count", 40), ("attempt_count", 40)):
+            if budget.get(field) != expected:
+                problems.append(
+                    f"{label} budget {field}={budget.get(field)!r}, expected={expected}"
+                )
+
+    prompt_path = Path(run_dir) / "prompt.md"
+    prompt_hash = (summary.get("provenance") or {}).get("prompt_sha256")
+    if not prompt_path.is_file() or sha256_file(prompt_path) != prompt_hash:
+        problems.append(f"{label} 저장 prompt.md와 provenance hash가 다릅니다")
 
     sample_ids = [result.sample_id for result in results]
     if len(sample_ids) != len(set(sample_ids)):
@@ -204,8 +264,20 @@ def compare_prompt_runs(
         baseline_results = _rescore_run(baseline_run_dir, case_authoring_path)
         candidate_results = _rescore_run(candidate_run_dir, case_authoring_path)
     invalid = [
-        *_run_problems("baseline", baseline_summary, baseline_results),
-        *_run_problems("candidate", candidate_summary, candidate_results),
+        *_run_problems(
+            "baseline",
+            baseline_run_dir,
+            baseline_summary,
+            baseline_manifest,
+            baseline_results,
+        ),
+        *_run_problems(
+            "candidate",
+            candidate_run_dir,
+            candidate_summary,
+            candidate_manifest,
+            candidate_results,
+        ),
     ]
 
     if baseline_summary.get("requested_model") != candidate_summary.get("requested_model"):
@@ -227,7 +299,22 @@ def compare_prompt_runs(
         "replay_enabled",
         "caps",
     ):
-        if baseline_contract.get(field) != candidate_contract.get(field):
+        baseline_value = baseline_contract.get(field)
+        candidate_value = candidate_contract.get(field)
+        if field == "provider" and isinstance(baseline_value, dict) and isinstance(
+            candidate_value, dict
+        ):
+            baseline_value = {
+                key: value
+                for key, value in baseline_value.items()
+                if key != "pricing_verified_on"
+            }
+            candidate_value = {
+                key: value
+                for key, value in candidate_value.items()
+                if key != "pricing_verified_on"
+            }
+        if baseline_value != candidate_value:
             invalid.append(f"prompt 외 실행 조건이 다릅니다: {field}")
     if baseline_manifest.get("input_manifest_sha256") != candidate_manifest.get(
         "input_manifest_sha256"
@@ -237,10 +324,14 @@ def compare_prompt_runs(
         ("baseline", baseline_summary, baseline_manifest),
         ("candidate", candidate_summary, candidate_manifest),
     ):
-        if manifest.get("status") != "complete":
-            invalid.append(f"{label} run manifest가 complete가 아닙니다")
+        if manifest.get("observed_status") != "complete":
+            invalid.append(f"{label} run manifest의 observed_status가 complete가 아닙니다")
+        if manifest.get("status") != summary.get("status"):
+            invalid.append(f"{label} summary와 run manifest의 status가 다릅니다")
         if manifest.get("contract", {}).get("run_id") != summary.get("run_id"):
             invalid.append(f"{label} summary와 run manifest의 run_id가 다릅니다")
+        if manifest.get("contract", {}).get("provenance") != summary.get("provenance"):
+            invalid.append(f"{label} summary와 run manifest의 provenance가 다릅니다")
 
     baseline_provenance = baseline_summary.get("provenance") or {}
     candidate_provenance = candidate_summary.get("provenance") or {}
@@ -305,7 +396,11 @@ def compare_prompt_runs(
             )
         )
 
-    counts = dict(Counter(item.classification for item in case_diffs))
+    counter = Counter(item.classification for item in case_diffs)
+    counts = {
+        name: counter[name]
+        for name in ("new_success", "new_failure", "unchanged", "not_comparable")
+    }
     metrics: dict[str, MetricDelta] = {}
     for metric in METRIC_NAMES:
         baseline_average = _metric_average(baseline_results, metric)

@@ -6,7 +6,6 @@ paths:
   prompt: prompts/pdf-question-answer-gemma4.md
   raw_documents: local-data/aihub/source
   prepared_documents: local-data/aihub/prepared
-  recorded_responses: data/recorded/week-02-gemma-improved-responses.jsonl
   output: reports/week-02-gemma-improved
 
 documents:
@@ -20,10 +19,9 @@ provider:
   expected_actual_model: google/gemma-4-31b-it
   api_base: https://integrate.api.nvidia.com/v1
   api_key_env: NVIDIA_NIM_API_KEY
-  structured_output: prompt_only
+  structured_output: json_schema
   billing_basis: developer_program_free_endpoint
   pricing_source_url: https://docs.api.nvidia.com/nim/docs/product
-  pricing_verified_on: 2026-07-30
   input_cost_per_token_usd: 0.0
   output_cost_per_token_usd: 0.0
 

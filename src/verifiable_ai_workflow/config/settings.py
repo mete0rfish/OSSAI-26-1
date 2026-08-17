@@ -2,7 +2,6 @@
 
 from __future__ import annotations
 
-from datetime import date
 from pathlib import Path
 from typing import Literal
 
@@ -20,7 +19,7 @@ class PathSettings(SettingsModel):
     prompt: str
     raw_documents: str
     prepared_documents: str
-    recorded_responses: str
+    recorded_responses: str | None = None
     output: str
 
 
@@ -40,12 +39,14 @@ class ProviderSettings(SettingsModel):
     temperature: float = Field(default=0.0, ge=0, le=2)
     top_p: float | None = Field(default=None, gt=0, le=1)
     seed: int | None = Field(default=None, ge=0)
+    sampling_parameters: Literal["explicit", "omit"] = "explicit"
     thinking_mode: Literal["default", "disabled"] = "default"
     thinking_parameter: Literal["thinking", "chat_template"] = "thinking"
     max_images_per_prompt: int | None = Field(default=None, gt=0)
-    billing_basis: Literal["developer_program_free_endpoint", "per_token"] | None = None
+    billing_basis: Literal[
+        "developer_program_free_endpoint", "free_tier", "per_token"
+    ] | None = None
     pricing_source_url: str | None = None
-    pricing_verified_on: date | None = None
     input_cost_per_token_usd: float | None = Field(default=None, ge=0)
     output_cost_per_token_usd: float | None = Field(default=None, ge=0)
 
@@ -58,7 +59,6 @@ class ProviderSettings(SettingsModel):
         if self.kind == "litellm" and (
             self.billing_basis is None
             or self.pricing_source_url is None
-            or self.pricing_verified_on is None
         ):
             raise ValueError("실제 API provider에는 billing basis와 가격 근거가 필요합니다")
         if self.pricing_source_url is not None and not self.pricing_source_url.startswith(
@@ -71,11 +71,11 @@ class ProviderSettings(SettingsModel):
         )
         if (values[0] is None) != (values[1] is None):
             raise ValueError("입력·출력 token 비용은 함께 설정해야 합니다")
-        if self.billing_basis == "developer_program_free_endpoint" and values != (
+        if self.billing_basis in {"developer_program_free_endpoint", "free_tier"} and values != (
             0.0,
             0.0,
         ):
-            raise ValueError("무료 개발 endpoint의 token 단가는 0이어야 합니다")
+            raise ValueError("무료 API 경로의 token 단가는 0이어야 합니다")
         return self
 
 

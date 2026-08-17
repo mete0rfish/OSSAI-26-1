@@ -1,4 +1,4 @@
-"""저장된 관찰값을 채점하고 DeepEval 결과를 만든다."""
+"""저장 응답으로 workflow를 실행하고 고정 규칙과 DeepEval로 채점한다."""
 
 from __future__ import annotations
 
@@ -11,17 +11,10 @@ from verifiable_ai_workflow.config import load_settings, project_path
 from verifiable_ai_workflow.data.dataset import load_cases
 from verifiable_ai_workflow.evaluation.deepeval_runner import evaluate_results
 from verifiable_ai_workflow.evaluation.scoring import score_observations
-from verifiable_ai_workflow.schemas import ModelObservation
+from verifiable_ai_workflow.providers.recorded import RecordedProvider
+from verifiable_ai_workflow.workflow import run_cases
 
 PROJECT_ROOT = Path(__file__).resolve().parents[1]
-
-
-def _load_observations(path: Path) -> list[ModelObservation]:
-    return [
-        ModelObservation.model_validate_json(line)
-        for line in path.read_text(encoding="utf-8").splitlines()
-        if line.strip()
-    ]
 
 
 def main() -> int:
@@ -30,9 +23,23 @@ def main() -> int:
     args = parser.parse_args()
 
     settings = load_settings(project_path(PROJECT_ROOT, args.config))
+    if settings.provider.kind != "recorded" or not settings.paths.recorded_responses:
+        raise ValueError("이 명령은 API를 호출하지 않는 recorded 실습용입니다")
     output_dir = project_path(PROJECT_ROOT, settings.paths.output)
     cases = load_cases(project_path(PROJECT_ROOT, settings.paths.cases))
-    observations = _load_observations(output_dir / "observations.jsonl")
+    observations = run_cases(
+        cases=cases,
+        prepared_documents=project_path(PROJECT_ROOT, settings.paths.prepared_documents),
+        prompt_path=project_path(PROJECT_ROOT, settings.paths.prompt),
+        provider=RecordedProvider(
+            project_path(PROJECT_ROOT, settings.paths.recorded_responses)
+        ),
+    )
+    output_dir.mkdir(parents=True, exist_ok=True)
+    (output_dir / "observations.jsonl").write_text(
+        "".join(observation.model_dump_json() + "\n" for observation in observations),
+        encoding="utf-8",
+    )
     results = score_observations(cases, observations)
 
     (output_dir / "results.jsonl").write_text(

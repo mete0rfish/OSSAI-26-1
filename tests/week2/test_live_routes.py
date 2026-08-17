@@ -4,6 +4,7 @@ import json
 from collections.abc import Callable
 from datetime import date
 from pathlib import Path
+from types import SimpleNamespace
 from typing import Any
 
 import pytest
@@ -107,7 +108,6 @@ def _live_config(project_root: Path, tmp_path: Path) -> Path:
     payload["paths"]["prompt"] = str(project_root / "prompts/pdf-question-answer.md")
     payload["paths"]["output"] = str(tmp_path / "reports")
     for route in (payload["baseline_route"], payload["candidate_route"]):
-        route["pricing_verified_on"] = TODAY
         route["billing_basis"] = "developer_program_free_endpoint"
         route["input_cost_per_token_usd"] = 0.0
         route["output_cost_per_token_usd"] = 0.0
@@ -282,6 +282,54 @@ def test_default_factory_maps_route_total_and_request_caps(
     assert provider.request_input_token_ceiling == (route.task_budget.max_input_tokens_per_request)
     assert provider.max_wall_seconds == route.task_budget.max_wall_seconds
     assert provider.request_timeout_seconds == (route.task_budget.request_timeout_seconds)
+    assert provider.sampling_parameters == "omit"
+
+
+def test_google_route_uses_free_tier(project_root: Path) -> None:
+    route = load_week2_live_config(project_root / "configs/week-02-live.yaml").candidate_route
+
+    assert route.billing_basis == "free_tier"
+    assert route.input_cost_per_token_usd == 0
+    assert route.output_cost_per_token_usd == 0
+
+
+def test_gemini_route_omits_sampling_parameters(
+    project_root: Path,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    route = load_week2_live_config(
+        project_root / "configs/week-02-live.yaml"
+    ).candidate_route
+    monkeypatch.setenv(route.api_key_env, "fake-key")
+    captured: dict[str, Any] = {}
+
+    def fake_completion(**kwargs: Any) -> SimpleNamespace:
+        captured.update(kwargs)
+        return SimpleNamespace(
+            id="response-1",
+            model=route.model,
+            usage=SimpleNamespace(prompt_tokens=1, completion_tokens=1),
+            choices=[SimpleNamespace(message=SimpleNamespace(content="{}"))],
+        )
+
+    monkeypatch.setattr(
+        "verifiable_ai_workflow.providers.litellm_provider.litellm.completion",
+        fake_completion,
+    )
+    provider = default_provider_factory(route)
+
+    provider.generate("aihub-report-r01", [{"role": "user", "content": "질문"}])
+
+    assert {"temperature", "top_p", "top_k", "seed"}.isdisjoint(captured)
+    assert provider.last_call["request_parameters"] == {
+        "sampling_parameters": "omit",
+        "temperature": None,
+        "top_p": None,
+        "seed": None,
+        "thinking_mode": "default",
+        "thinking_parameter": "thinking",
+        "max_images_per_prompt": None,
+    }
 
 
 def test_default_provider_persists_attempt_reservation_before_network(
@@ -322,8 +370,33 @@ def test_missing_second_key_blocks_before_provider_factory(
             config_path=config_path,
             caps=_caps(),
             catalog_verified_on=TODAY,
+            pricing_verified_on=TODAY,
             output_dir=tmp_path / "output",
             environ={"NVIDIA_NIM_API_KEY": "only-first-key"},
+            provider_factory=_factory(project_root, seen=factory_calls),
+            require_clean_git=False,
+            clock=lambda: 0.0,
+        )
+
+    assert factory_calls == []
+
+
+def test_stale_pricing_check_blocks_before_provider_factory(
+    project_root: Path,
+    tmp_path: Path,
+) -> None:
+    config_path = _live_config(project_root, tmp_path)
+    factory_calls: list[str] = []
+
+    with pytest.raises(Week2LiveError, match="가격 확인 날짜"):
+        run_week2_live(
+            project_root,
+            config_path=config_path,
+            caps=_caps(),
+            catalog_verified_on=TODAY,
+            pricing_verified_on="2000-01-01",
+            output_dir=tmp_path / "output",
+            environ=_keys(),
             provider_factory=_factory(project_root, seen=factory_calls),
             require_clean_git=False,
             clock=lambda: 0.0,
@@ -345,6 +418,7 @@ def test_same_key_value_blocks_before_provider_factory(
             config_path=config_path,
             caps=_caps(),
             catalog_verified_on=TODAY,
+            pricing_verified_on=TODAY,
             output_dir=tmp_path / "output",
             environ={
                 "NVIDIA_NIM_API_KEY": "same-key",
@@ -372,6 +446,7 @@ def test_whole_run_caps_block_before_provider_factory(
             config_path=config_path,
             caps=caps,
             catalog_verified_on=TODAY,
+            pricing_verified_on=TODAY,
             output_dir=tmp_path / "output",
             environ=_keys(),
             provider_factory=_factory(project_root, seen=factory_calls),
@@ -395,6 +470,7 @@ def test_fake_two_provider_run_writes_raw_results_and_provenance(
         config_path=config_path,
         caps=_caps(),
         catalog_verified_on=TODAY,
+        pricing_verified_on=TODAY,
         output_dir=output,
         environ=_keys(),
         provider_factory=_factory(project_root, seen=seen),
@@ -409,10 +485,17 @@ def test_fake_two_provider_run_writes_raw_results_and_provenance(
     assert execution.summary.baseline_invalid_outputs == 0
     assert execution.summary.candidate_invalid_outputs == 0
     assert execution.summary.release_claim is False
-    assert execution.comparison.classification_counts == {"unchanged": 40}
+    assert execution.comparison.classification_counts == {
+        "new_success": 0,
+        "new_failure": 0,
+        "unchanged": 40,
+        "not_comparable": 0,
+    }
     assert execution.baseline_provenance.input_manifest_sha256 == (
         execution.candidate_provenance.input_manifest_sha256
     )
+    assert execution.baseline_provenance.pricing_verified_on.isoformat() == TODAY
+    assert execution.candidate_provenance.pricing_verified_on.isoformat() == TODAY
     observation = json.loads(
         (output / "baseline-observations.jsonl").read_text(encoding="utf-8").splitlines()[0]
     )
@@ -424,7 +507,7 @@ def test_fake_two_provider_run_writes_raw_results_and_provenance(
     assert (output / "candidate-live-records.jsonl").is_file()
     input_manifest = json.loads((output / "input-manifest.json").read_text(encoding="utf-8"))
     assert input_manifest["input_modality"] == "page_images_only"
-    assert input_manifest["scoring_profile"] == "aihub-vqa-deterministic-v2"
+    assert input_manifest["scoring_profile"] == "aihub-vqa-deterministic-v4"
     assert "page_texts" not in json.dumps(input_manifest)
     assert (output / "run-manifest.json").is_file()
     assert (output / "baseline-provenance.json").is_file()
@@ -441,6 +524,7 @@ def test_fake_two_provider_run_writes_raw_results_and_provenance(
     assert record["parsed_response"]
     run_manifest = json.loads((output / "run-manifest.json").read_text(encoding="utf-8"))
     assert run_manifest["status"] == "pass"
+    assert run_manifest["pricing_verified_on"] == TODAY
     assert run_manifest["baseline_observation_count"] == 40
     assert run_manifest["candidate_observation_count"] == 40
 
@@ -466,6 +550,7 @@ def test_one_sample_probe_calls_each_provider_once_and_is_inconclusive(
         config_path=config_path,
         caps=caps,
         catalog_verified_on=TODAY,
+        pricing_verified_on=TODAY,
         output_dir=output,
         environ=_keys(),
         provider_factory=_factory(project_root, seen=seen),
@@ -503,6 +588,7 @@ def test_provider_error_or_actual_model_mismatch_is_inconclusive(
         config_path=config_path,
         caps=_caps(),
         catalog_verified_on=TODAY,
+        pricing_verified_on=TODAY,
         output_dir=tmp_path / "output",
         environ=_keys(),
         provider_factory=_factory(
@@ -516,6 +602,12 @@ def test_provider_error_or_actual_model_mismatch_is_inconclusive(
 
     assert execution.summary.automated_status == "inconclusive"
     assert any(reason_fragment in reason for reason in execution.summary.invalid_reasons)
+    if candidate_actual_model:
+        assert execution.candidate_provenance.actual_model_mismatch_count == 40
+        assert execution.summary.candidate_provider_errors == 0
+    else:
+        assert execution.candidate_provenance.actual_model_mismatch_count == 0
+        assert execution.summary.candidate_provider_errors == 1
 
 
 def test_incomplete_canonical_coverage_is_inconclusive(
@@ -529,6 +621,7 @@ def test_incomplete_canonical_coverage_is_inconclusive(
         config_path=config_path,
         caps=_caps(),
         catalog_verified_on=TODAY,
+        pricing_verified_on=TODAY,
         output_dir=output,
         environ=_keys(),
         provider_factory=_factory(project_root),

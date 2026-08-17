@@ -2,8 +2,8 @@
 
 from __future__ import annotations
 
+import argparse
 import json
-import sys
 from pathlib import Path
 
 from verifiable_ai_workflow.data.dataset import build_cases
@@ -27,17 +27,17 @@ def main() -> int:
         if item.sample_id == CASE_ID
     )
     manifest_path = PREPARED_ROOT / case.document_id / "manifest.json"
-    if not manifest_path.is_file():
-        print(
-            "준비된 문서가 없습니다. 먼저 "
-            "`uv run --locked python scripts/prepare_documents.py`를 실행하세요.",
-            file=sys.stderr,
+    manifest = (
+        json.loads(manifest_path.read_text(encoding="utf-8"))
+        if manifest_path.is_file()
+        else None
+    )
+    expected_page = (
+        next(
+            page for page in manifest["pages"] if page["page_number"] == case.expected.pages[0]
         )
-        return 2
-
-    manifest = json.loads(manifest_path.read_text(encoding="utf-8"))
-    expected_page = next(
-        page for page in manifest["pages"] if page["page_number"] == case.expected.pages[0]
+        if manifest
+        else None
     )
     raw_response = RecordedProvider(
         PROJECT_ROOT / "data/recorded/week-01-nvidia-responses.jsonl"
@@ -48,12 +48,18 @@ def main() -> int:
         "sample_id": case.sample_id,
         "input": {
             "question": case.question,
-            "page_image_count": len(manifest["pages"]),
+            "prepared_input_status": "prepared" if manifest else "not_prepared",
+            "page_image_count": len(manifest["pages"]) if manifest else None,
             "expected_page_image": (
                 f"local-data/aihub/prepared/{case.document_id}/"
                 f"{expected_page['model_image_path']}"
+                if expected_page
+                else None
             ),
-            "note": "실제 모델에는 질문과 전체 페이지 이미지만 보냅니다.",
+            "note": (
+                "실제 모델에는 질문과 전체 페이지 이미지만 보냅니다. "
+                "준비된 이미지가 없어도 이 명령은 저장 응답을 채점합니다."
+            ),
         },
         "model_output": {
             "raw_response": raw_response,
@@ -78,4 +84,5 @@ def main() -> int:
 
 
 if __name__ == "__main__":
+    argparse.ArgumentParser(description=__doc__).parse_args()
     raise SystemExit(main())

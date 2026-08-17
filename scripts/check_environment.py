@@ -2,6 +2,7 @@
 
 from __future__ import annotations
 
+import argparse
 import importlib.metadata
 import sys
 
@@ -23,9 +24,10 @@ def main() -> int:
     print(f"Python: {sys.version.split()[0]}")
     for name, version in versions.items():
         print(f"{name}: {version}")
-    print("환경 확인 완료")
+    print("Python·패키지 확인 완료; API 키는 provider 사전 점검에서 확인합니다")
     return 0
 
 
 if __name__ == "__main__":
+    argparse.ArgumentParser(description=__doc__).parse_args()
     raise SystemExit(main())

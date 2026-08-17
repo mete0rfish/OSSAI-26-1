@@ -24,7 +24,7 @@ def file_sha256(path: str | Path) -> str:
     return digest.hexdigest()
 
 
-def _save_model_image(
+def save_model_image(
     image: Image.Image,
     path: Path,
     *,
@@ -91,7 +91,7 @@ def prepare_pdf(
             image_path = pages_dir / f"page-{index + 1:04}.png"
             image.save(image_path)
             model_image_path = model_pages_dir / f"page-{index + 1:04}.jpg"
-            _save_model_image(
+            save_model_image(
                 image,
                 model_image_path,
                 max_bytes=model_image_max_bytes,

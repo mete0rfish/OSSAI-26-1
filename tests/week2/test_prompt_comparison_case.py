@@ -21,8 +21,11 @@ def test_week02_case_walkthrough_explains_new_success(
 
     prepared_root = tmp_path / "prepared"
     monkeypatch.setattr(module, "PREPARED_ROOT", prepared_root)
-    assert module.main() == 2
-    assert "scripts/prepare_documents.py" in capsys.readouterr().err
+    assert module.main() == 0
+    unprepared = json.loads(capsys.readouterr().out)
+    assert unprepared["input"]["prepared_input_status"] == "not_prepared"
+    assert unprepared["input"]["page_image_count"] is None
+    assert unprepared["classification"] == "new_success"
 
     document_root = prepared_root / "MI2_240819_TY1_0012"
     (document_root / "model-pages").mkdir(parents=True)
@@ -53,10 +56,12 @@ def test_week02_case_walkthrough_explains_new_success(
         "baseline",
         "candidate",
         "classification",
+        "diagnostic_note",
         "evidence_kind",
     ]
     assert payload["sample_id"] == "aihub-report-r01"
     assert payload["changed"] == "prompt_only"
+    assert payload["input"]["prepared_input_status"] == "prepared"
     assert payload["input"]["page_image_count"] == 1
     assert payload["baseline"]["parsed_answer"]["answer"] == (
         "2016년 말 기준 은행 가계대출 중 변동금리 비중은 71.6%입니다."
@@ -65,5 +70,11 @@ def test_week02_case_walkthrough_explains_new_success(
     assert payload["expected"]["answer"] == "71.6%"
     assert payload["baseline"]["task_success"] == 0.0
     assert payload["candidate"]["task_success"] == 1.0
+    assert payload["baseline"]["diagnostic_scores"]["json_object_only"] == 0.0
+    assert payload["candidate"]["diagnostic_scores"]["json_object_only"] == 0.0
+    assert payload["baseline"]["diagnostic_scores"]["numeric_match"] == 0.0
+    assert payload["candidate"]["diagnostic_scores"]["numeric_match"] == 1.0
+    assert "2016" in payload["baseline"]["diagnostic_reasons"]["numeric_match"]
+    assert "task_success 통과 조건에 포함되지 않습니다" in payload["diagnostic_note"]
     assert payload["classification"] == "new_success"
     assert payload["evidence_kind"] == "test_only"

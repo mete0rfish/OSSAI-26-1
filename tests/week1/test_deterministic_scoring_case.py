@@ -21,8 +21,11 @@ def test_week01_case_walkthrough_shows_input_output_expected_and_score(
 
     prepared_root = tmp_path / "prepared"
     monkeypatch.setattr(module, "PREPARED_ROOT", prepared_root)
-    assert module.main() == 2
-    assert "scripts/prepare_documents.py" in capsys.readouterr().err
+    assert module.main() == 0
+    unprepared = json.loads(capsys.readouterr().out)
+    assert unprepared["input"]["prepared_input_status"] == "not_prepared"
+    assert unprepared["input"]["page_image_count"] is None
+    assert unprepared["scoring"]["task_success"] == 0.0
 
     document_root = prepared_root / "MI2_240819_TY1_0012"
     (document_root / "model-pages").mkdir(parents=True)
@@ -56,6 +59,7 @@ def test_week01_case_walkthrough_shows_input_output_expected_and_score(
     assert payload["input"]["question"] == (
         "2017년 상반기 민간소비 증가율은 얼마인가요?"
     )
+    assert payload["input"]["prepared_input_status"] == "prepared"
     assert payload["input"]["page_image_count"] == 1
     assert payload["input"]["expected_page_image"] == (
         "local-data/aihub/prepared/MI2_240819_TY1_0012/model-pages/page-0001.jpg"
@@ -64,6 +68,7 @@ def test_week01_case_walkthrough_shows_input_output_expected_and_score(
     assert payload["model_output"]["parsed_answer"]["answer"] == "2.7"
     assert payload["expected"] == {
         "answer": "2.0%",
+        "accepted_answers": [],
         "pages": [1],
         "abstained": False,
     }

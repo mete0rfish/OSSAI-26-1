@@ -6,7 +6,7 @@ import argparse
 from pathlib import Path
 
 from verifiable_ai_workflow.config import load_settings, project_path
-from verifiable_ai_workflow.preprocessing import prepare_directory
+from verifiable_ai_workflow.preprocessing import DocumentPreparationError, prepare_directory
 
 PROJECT_ROOT = Path(__file__).resolve().parents[1]
 
@@ -27,13 +27,16 @@ def main() -> int:
         PROJECT_ROOT,
         args.output_dir or settings.paths.prepared_documents,
     )
-    manifests = prepare_directory(
-        source_dir,
-        output_dir,
-        render_dpi=settings.documents.render_dpi,
-        model_image_max_bytes=settings.documents.model_image_max_bytes,
-        model_image_max_width=settings.documents.model_image_max_width,
-    )
+    try:
+        manifests = prepare_directory(
+            source_dir,
+            output_dir,
+            render_dpi=settings.documents.render_dpi,
+            model_image_max_bytes=settings.documents.model_image_max_bytes,
+            model_image_max_width=settings.documents.model_image_max_width,
+        )
+    except DocumentPreparationError as exc:
+        raise SystemExit(str(exc)) from None
     for manifest in manifests:
         print(manifest)
     return 0

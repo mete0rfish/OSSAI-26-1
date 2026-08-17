@@ -1,0 +1,39 @@
+dataset: OpenCQA
+source_url: https://github.com/vis-nlp/OpenCQA
+revision: 28db0fd26a12fd376f6c30b7feb8a4db32313424
+license: GPL-3.0
+source_split: val
+course_splits:
+  development:
+    - "884"
+    - "43"
+    - "7484"
+    - "101"
+    - "106"
+    - "131"
+    - "2376"
+    - "73"
+    - "6137"
+    - "4267"
+    - "6766"
+    - "3316"
+    - "293"
+    - "6431"
+    - "911"
+    - "4745"
+    - "6370"
+    - "877"
+  validation:
+    - "171"
+    - "699"
+    - "6447"
+    - "2208"
+    - "4327"
+    - "5978"
+  test:
+    - "887"
+    - "183"
+    - "4729"
+    - "6014"
+    - "56"
+    - "7431"

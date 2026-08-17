@@ -77,9 +77,9 @@ class LiveRoute(LiveModel):
     api_base: str | None
     api_key_env: str = Field(min_length=1)
     structured_output: Literal["json_schema", "prompt_only"]
-    billing_basis: Literal["developer_program_free_endpoint", "per_token"]
+    sampling_parameters: Literal["explicit", "omit"] = "explicit"
+    billing_basis: Literal["developer_program_free_endpoint", "free_tier", "per_token"]
     pricing_source_url: str = Field(min_length=1)
-    pricing_verified_on: date
     input_cost_per_token_usd: float = Field(ge=0, allow_inf_nan=False)
     output_cost_per_token_usd: float = Field(ge=0, allow_inf_nan=False)
     task_budget: RouteTaskBudget
@@ -108,7 +108,7 @@ class LiveRoute(LiveModel):
             raise ValueError("api_base는 http(s) URL 또는 null이어야 합니다")
         if not self.pricing_source_url.startswith("https://"):
             raise ValueError("pricing_source_url은 HTTPS 공식 문서여야 합니다")
-        if self.billing_basis == "developer_program_free_endpoint":
+        if self.billing_basis in {"developer_program_free_endpoint", "free_tier"}:
             if self.input_cost_per_token_usd != 0 or self.output_cost_per_token_usd != 0:
                 raise ValueError("무료 개발 endpoint의 token 단가는 0이어야 합니다")
         elif self.input_cost_per_token_usd <= 0 or self.output_cost_per_token_usd <= 0:
@@ -123,6 +123,7 @@ class LiveRoute(LiveModel):
             logical_model=f"{self.provider_id}:{self.model}",
             requested_model=self.model,
             expected_actual_model=self.expected_actual_model,
+            sampling_parameters=self.sampling_parameters,
         )
 
 
@@ -183,7 +184,7 @@ class DocumentInputDigest(LiveModel):
 
 class LiveInputManifest(LiveModel):
     input_modality: Literal["page_images_only"] = "page_images_only"
-    scoring_profile: Literal["aihub-vqa-deterministic-v2"] = SCORING_PROFILE
+    scoring_profile: Literal["aihub-vqa-deterministic-v4"] = SCORING_PROFILE
     case_authoring_sha256: str = Field(pattern=r"^[0-9a-f]{64}$")
     prompt_sha256: str = Field(pattern=r"^[0-9a-f]{64}$")
     output_schema_sha256: str = Field(pattern=r"^[0-9a-f]{64}$")
@@ -233,7 +234,7 @@ class RouteProvenance(LiveModel):
     expected_actual_model: str
     api_base: str | None
     api_key_env: str
-    billing_basis: Literal["developer_program_free_endpoint", "per_token"]
+    billing_basis: Literal["developer_program_free_endpoint", "free_tier", "per_token"]
     pricing_source_url: str
     pricing_verified_on: date
     git: GitProvenance
@@ -266,7 +267,7 @@ class LiveSampleRecord(LiveModel):
     route_role: Literal["baseline", "candidate"]
     sample_id: str
     family_id: str
-    split: Literal["development", "validation", "challenge", "sealed_test"]
+    split: Literal["development", "validation", "challenge"]
     risk_level: Literal["low", "medium", "high"]
     source_title: str
     source_license: str
@@ -436,7 +437,6 @@ def build_live_comparison_contract(
         output_schema_sha256=sha256_file(root / "src/verifiable_ai_workflow/schemas/models.py"),
         scorer_sha256=sha256_file(root / "src/verifiable_ai_workflow/evaluation/scoring.py"),
         lockfile_sha256=sha256_file(root / "uv.lock"),
-        temperature=0.0,
         max_output_tokens=(config.baseline_route.task_budget.max_output_tokens_per_request),
     )
 
@@ -464,14 +464,6 @@ def resolve_live_keys(
     if hmac.compare_digest(baseline_key, candidate_key):
         raise Week2LiveError("두 provider는 서로 다른 API key를 사용해야 합니다")
     return resolved
-
-
-def validate_whole_run_caps(config: Week2LiveConfig, caps: WholeRunCaps) -> None:
-    validate_whole_run_caps_for_sample_count(
-        config,
-        caps,
-        samples_per_route=config.expected_sample_count,
-    )
 
 
 def validate_whole_run_caps_for_sample_count(
@@ -713,6 +705,7 @@ def default_provider_factory(route: LiveRoute) -> LiveProvider:
         request_timeout_seconds=budget.request_timeout_seconds,
         input_cost_per_token_usd=route.input_cost_per_token_usd,
         output_cost_per_token_usd=route.output_cost_per_token_usd,
+        sampling_parameters=route.sampling_parameters,
     )
 
 
@@ -780,12 +773,21 @@ def _actual_model_mismatch_count(
 ) -> int:
     count = 0
     for result in results:
-        if result.provider_status == "provider_error":
-            continue
-        actual = result.model_call.get("actual_model") if result.model_call else None
-        if actual != route.expected_actual_model:
+        call = result.model_call or {}
+        actual = call.get("actual_model")
+        if call.get("error_type") == "ActualModelMismatch" or (
+            actual is not None and actual != route.expected_actual_model
+        ):
             count += 1
     return count
+
+
+def _provider_error_count(route: LiveRoute, results: list[EvaluationResult]) -> int:
+    return sum(
+        result.provider_status == "provider_error"
+        and not _actual_model_mismatch_count(route, [result])
+        for result in results
+    )
 
 
 def _coverage_reasons(
@@ -797,7 +799,7 @@ def _coverage_reasons(
     ids = [result.sample_id for result in results]
     if tuple(ids) != EXPECTED_WEEK2_SAMPLE_IDS:
         reasons.append(f"{label} canonical 40건 coverage 불완전")
-    provider_errors = sum(result.provider_status == "provider_error" for result in results)
+    provider_errors = _provider_error_count(route, results)
     if provider_errors:
         reasons.append(f"{label} provider error {provider_errors}건")
     mismatch = _actual_model_mismatch_count(route, results)
@@ -842,6 +844,7 @@ def _route_provenance(
     results: list[EvaluationResult],
     git: GitProvenance,
     catalog_verified_on: date,
+    pricing_verified_on: date,
     config_sha256: str,
     contract: ComparisonContract,
     input_manifest: LiveInputManifest,
@@ -859,7 +862,7 @@ def _route_provenance(
         api_key_env=route.api_key_env,
         billing_basis=route.billing_basis,
         pricing_source_url=route.pricing_source_url,
-        pricing_verified_on=route.pricing_verified_on,
+        pricing_verified_on=pricing_verified_on,
         git=git,
         catalog_verified_on=catalog_verified_on,
         config_sha256=config_sha256,
@@ -869,7 +872,7 @@ def _route_provenance(
         completed_at_utc=completed_at,
         observation_count=len(observations),
         result_count=len(results),
-        provider_error_count=sum(result.provider_status == "provider_error" for result in results),
+        provider_error_count=_provider_error_count(route, results),
         invalid_output_count=sum(result.provider_status == "invalid_output" for result in results),
         actual_model_mismatch_count=_actual_model_mismatch_count(route, results),
         budget=budget,
@@ -956,6 +959,7 @@ def run_week2_live(
     config_path: str | Path,
     caps: WholeRunCaps,
     catalog_verified_on: date,
+    pricing_verified_on: date,
     output_dir: str | Path | None = None,
     environ: Mapping[str, str] | None = None,
     provider_factory: ProviderFactory = default_provider_factory,
@@ -977,12 +981,14 @@ def run_week2_live(
     catalog_age = (today - verified_on).days
     if catalog_age < 0 or catalog_age > 7:
         raise Week2LiveError("catalog 확인 날짜는 오늘부터 7일 이내여야 합니다")
-    for route in (config.baseline_route, config.candidate_route):
-        pricing_age = (today - route.pricing_verified_on).days
-        if pricing_age < 0 or pricing_age > 7:
-            raise Week2LiveError(
-                f"{route.provider_id} 가격 근거 날짜는 오늘부터 7일 이내여야 합니다"
-            )
+    pricing_on = (
+        date.fromisoformat(pricing_verified_on)
+        if isinstance(pricing_verified_on, str)
+        else pricing_verified_on
+    )
+    pricing_age = (today - pricing_on).days
+    if pricing_age < 0 or pricing_age > 7:
+        raise Week2LiveError("가격 확인 날짜는 오늘부터 7일 이내여야 합니다")
     selected_sample_count = 1 if probe_sample_id is not None else config.expected_sample_count
     validate_whole_run_caps_for_sample_count(
         config,
@@ -1034,6 +1040,7 @@ def run_week2_live(
         "target_sample_ids": [case.sample_id for case in cases],
         "caps": caps.model_dump(mode="json"),
         "catalog_verified_on": verified_on.isoformat(),
+        "pricing_verified_on": pricing_on.isoformat(),
         "config_sha256": config_sha256,
         "input_manifest_sha256": input_manifest.sha256,
         "comparison_contract_sha256": route_contracts["baseline"].sha256,
@@ -1122,6 +1129,7 @@ def run_week2_live(
             results=results,
             git=git,
             catalog_verified_on=verified_on,
+            pricing_verified_on=pricing_on,
             config_sha256=config_sha256,
             contract=route_contracts[role],
             input_manifest=input_manifest,

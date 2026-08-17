@@ -9,7 +9,9 @@ import math
 import os
 import re
 import secrets
+import shutil
 import subprocess
+import sys
 from collections import Counter
 from datetime import UTC, date, datetime
 from pathlib import Path
@@ -98,6 +100,7 @@ def _classify_run_status(
     complete: bool,
     provider_error_count: int,
     model_drift_count: int,
+    failed_result_count: int,
 ) -> tuple[str, str]:
     """개별 관찰 결과와 품질 주장에 쓸 run-level 상태를 분리한다."""
 
@@ -109,8 +112,35 @@ def _classify_run_status(
         observed_status = "inconclusive"
     else:
         observed_status = "complete"
-    run_status = "inconclusive" if probe_only else observed_status
+    if probe_only or observed_status != "complete":
+        run_status = "inconclusive"
+    elif failed_result_count:
+        run_status = "fail"
+    else:
+        run_status = "pass"
     return run_status, observed_status
+
+
+def _is_model_drift(observation: ModelObservation) -> bool:
+    call = observation.model_call or {}
+    return call.get("error_type") == "ActualModelMismatch" or (
+        call.get("actual_model") is not None
+        and not call.get("actual_model_matches_expected", False)
+    )
+
+
+def _quality_score_averages(results) -> tuple[int, dict[str, float]]:
+    eligible = [
+        result
+        for result in results
+        if result.provider_status in {"success", "invalid_output"}
+    ]
+    if not eligible:
+        return 0, {}
+    return len(eligible), {
+        name: round(sum(result.scores[name] for result in eligible) / len(eligible), 4)
+        for name in eligible[0].scores
+    }
 
 
 def _require_approved_case_copy(
@@ -122,8 +152,6 @@ def _require_approved_case_copy(
 
     if len(canonical_cases) != 40:
         raise ValueError("canonical Week 1 authoring data는 정확히 40건이어야 합니다")
-    if any(case.split == "sealed_test" for case in canonical_cases + local_cases):
-        raise ValueError("Week 1 live 실행에는 sealed_test 입력을 사용할 수 없습니다")
     canonical_payload = [case.model_dump(mode="json") for case in canonical_cases]
     local_payload = [case.model_dump(mode="json") for case in local_cases]
     if local_payload != canonical_payload:
@@ -175,7 +203,7 @@ def _require_approved_provider(settings: LabSettings, config_path: Path) -> None
         )
 
 
-def _with_probe_prompt(settings: LabSettings, supplied_path: str | Path) -> LabSettings:
+def _with_local_prompt(settings: LabSettings, supplied_path: str | Path) -> LabSettings:
     prompt_path = project_path(PROJECT_ROOT, str(supplied_path))
     local_data = (PROJECT_ROOT / "local-data").resolve()
     if not prompt_path.is_relative_to(local_data) or not prompt_path.is_file():
@@ -189,12 +217,86 @@ def _with_probe_prompt(settings: LabSettings, supplied_path: str | Path) -> LabS
     )
 
 
+def _require_baseline_release(
+    supplied_path: str | Path,
+    current_contract: dict[str, Any],
+) -> None:
+    run_dir = project_path(PROJECT_ROOT, str(supplied_path))
+    summary = json.loads((run_dir / "summary.json").read_text(encoding="utf-8"))
+    manifest = json.loads((run_dir / "run-manifest.json").read_text(encoding="utf-8"))
+    baseline_contract = manifest.get("contract") or {}
+    provenance = summary.get("provenance") or {}
+    if provenance != baseline_contract.get("provenance"):
+        raise ValueError("Week 2 baseline의 summary와 run manifest 계보가 다릅니다")
+    if (
+        summary.get("observed_status"),
+        summary.get("record_count"),
+        summary.get("target_count"),
+    ) != ("complete", 40, 40):
+        raise ValueError("Week 2 baseline은 40건이 완결된 실행이어야 합니다")
+    if provenance.get("git_clean") is not True:
+        raise ValueError("Week 2 baseline은 clean Git에서 만든 실행이어야 합니다")
+    current_provenance = current_contract["provenance"]
+    operational = {"prompt_sha256", "catalog_verified_on", "pricing_verified_on"}
+    if {key: value for key, value in provenance.items() if key not in operational} != {
+        key: value for key, value in current_provenance.items() if key not in operational
+    }:
+        raise ValueError("Week 2 baseline과 현재 실행의 prompt 외 계보가 다릅니다")
+    per_run = {"run_id", "trial_id", "provider", "provenance"}
+    if {key: value for key, value in baseline_contract.items() if key not in per_run} != {
+        key: value for key, value in current_contract.items() if key not in per_run
+    }:
+        raise ValueError("Week 2 baseline과 현재 실행의 prompt 외 계약이 다릅니다")
+    baseline_provider = dict(baseline_contract.get("provider") or {})
+    current_provider = dict(current_contract.get("provider") or {})
+    baseline_provider.pop("pricing_verified_on", None)
+    current_provider.pop("pricing_verified_on", None)
+    if baseline_provider != current_provider:
+        raise ValueError("Week 2 baseline과 현재 실행의 provider 설정이 다릅니다")
+    expected_actual_model = current_provider.get("expected_actual_model")
+    if (
+        summary.get("requested_model") != current_provider.get("requested_model")
+        or summary.get("expected_actual_model") != expected_actual_model
+        or summary.get("actual_models") != [expected_actual_model]
+        or summary.get("provider_error_count") != 0
+        or summary.get("model_drift_count") != 0
+        or summary.get("live_call_performed") is not True
+    ):
+        raise ValueError("Week 2 baseline의 실제 model·호출 상태가 설정과 다릅니다")
+    baseline_prompt = project_path(
+        PROJECT_ROOT,
+        load_settings(PROJECT_ROOT / GEMMA_BASELINE_CONFIG).paths.prompt,
+    )
+    baseline_prompt_hash = _sha256_file(baseline_prompt)
+    if (
+        provenance.get("prompt_sha256") != baseline_prompt_hash
+        or not (run_dir / "prompt.md").is_file()
+        or _sha256_file(run_dir / "prompt.md") != baseline_prompt_hash
+    ):
+        raise ValueError("Week 2 baseline이 과정의 기준 prompt로 만든 실행이 아닙니다")
+    if current_provenance.get("prompt_sha256") == baseline_prompt_hash:
+        raise ValueError("개인 prompt가 Week 2 baseline prompt와 같습니다")
+
+
 def _sha256_file(path: str | Path) -> str:
     digest = hashlib.sha256()
     with Path(path).open("rb") as handle:
         for chunk in iter(lambda: handle.read(1024 * 1024), b""):
             digest.update(chunk)
     return digest.hexdigest()
+
+
+def _preserve_prompt(
+    source: Path,
+    snapshot: Path,
+    *,
+    expected_sha256: str,
+    resume: bool,
+) -> None:
+    if not resume:
+        shutil.copyfile(source, snapshot)
+    if not snapshot.is_file() or _sha256_file(snapshot) != expected_sha256:
+        raise ValueError("실행에 저장한 prompt가 없거나 hash가 다릅니다")
 
 
 def _canonical_sha256(value: object) -> str:
@@ -276,11 +378,12 @@ def _build_provenance(
     cases: list[EvaluationCase],
     input_manifest: dict[str, Any],
     catalog_verified_on: date,
+    pricing_verified_on: date,
     require_clean_git: bool,
 ) -> dict[str, Any]:
     git_sha, git_clean = _git_state()
     if require_clean_git and not git_clean:
-        raise RuntimeError("전체 품질 실행은 변경사항이 없는 Git commit에서만 허용합니다")
+        raise LiveExecutionError("전체 품질 실행은 변경사항이 없는 Git commit에서만 허용합니다")
 
     component_hashes = {
         relative: _sha256_file(PROJECT_ROOT / relative) for relative in PROVENANCE_COMPONENTS
@@ -299,6 +402,7 @@ def _build_provenance(
     return {
         "git_sha": git_sha,
         "git_clean": git_clean,
+        "config_path": config_path.relative_to(PROJECT_ROOT).as_posix(),
         "config_sha256": _sha256_file(config_path),
         "dataset_sha256": _sha256_file(cases_path),
         "input_manifest_content_sha256": _canonical_sha256(input_manifest),
@@ -315,11 +419,7 @@ def _build_provenance(
         "catalog_verified_on": catalog_verified_on.isoformat(),
         "billing_basis": settings.provider.billing_basis,
         "pricing_source_url": settings.provider.pricing_source_url,
-        "pricing_verified_on": (
-            settings.provider.pricing_verified_on.isoformat()
-            if settings.provider.pricing_verified_on is not None
-            else None
-        ),
+        "pricing_verified_on": pricing_verified_on.isoformat(),
         "sources": [
             {"title": title, "license": license_name, "revision": revision}
             for title, license_name, revision in source_rows
@@ -352,6 +452,13 @@ def _append_jsonl(path: Path, value: object) -> None:
         )
         handle.flush()
         os.fsync(handle.fileno())
+
+
+def _append_call_once(path: Path, call: dict | None, previous: dict | None) -> dict | None:
+    if call and call != previous:
+        _append_jsonl(path, call)
+        return call
+    return previous
 
 
 def _load_observations(path: Path) -> list[ModelObservation]:
@@ -484,11 +591,7 @@ def _immutable_run_contract(
             "api_key_env": settings.provider.api_key_env,
             "billing_basis": settings.provider.billing_basis,
             "pricing_source_url": settings.provider.pricing_source_url,
-            "pricing_verified_on": (
-                settings.provider.pricing_verified_on.isoformat()
-                if settings.provider.pricing_verified_on is not None
-                else None
-            ),
+            "pricing_verified_on": provenance["pricing_verified_on"],
         },
         "evaluation_mode": "benchmark",
         "evidence_kind": "live_quality",
@@ -560,7 +663,7 @@ def _write_records(
 
 
 def _parser() -> argparse.ArgumentParser:
-    parser = argparse.ArgumentParser(description="NVIDIA NIM Week 1 bounded live batch")
+    parser = argparse.ArgumentParser(description="NVIDIA NIM bounded live batch")
     parser.add_argument("--config", default=CANONICAL_CONFIG)
     parser.add_argument("--live", action="store_true")
     parser.add_argument("--max-requests", type=_positive_int, required=True)
@@ -573,13 +676,22 @@ def _parser() -> argparse.ArgumentParser:
     parser.add_argument("--sample-id", choices=(PROBE_SAMPLE_ID,))
     parser.add_argument(
         "--prompt",
-        help="한 사례 probe에서만 사용하는 local-data 아래의 학습자 prompt",
+        help="local-data 아래의 학습자 prompt",
+    )
+    parser.add_argument(
+        "--baseline-run",
+        help="학습자 prompt와 비교할 같은 release의 Week 2 baseline 폴더",
     )
     parser.add_argument("--trial-id", default="trial-01")
     parser.add_argument("--run-id")
     parser.add_argument("--resume", action="store_true")
     parser.add_argument(
         "--catalog-verified-on",
+        type=date.fromisoformat,
+        required=True,
+    )
+    parser.add_argument(
+        "--pricing-verified-on",
         type=date.fromisoformat,
         required=True,
     )
@@ -597,15 +709,15 @@ def main() -> int:
         parser.error("새 run_id는 자동 생성됩니다. --run-id는 --resume에만 사용합니다")
     if args.resume and args.sample_id:
         parser.error("--resume에서는 최초 run의 target을 변경할 수 없습니다")
-    if args.prompt and (args.resume or not args.sample_id):
-        parser.error("--prompt는 새 한 사례 probe에서만 사용할 수 있습니다")
+    if args.prompt and not args.sample_id and not args.resume and not args.baseline_run:
+        parser.error("개인 prompt 40건 실행에는 --baseline-run이 필요합니다")
     _validate_run_id(args.trial_id)
 
     load_project_env(PROJECT_ROOT)
     config_path = _require_approved_config(args.config)
     settings = load_settings(config_path)
     if args.prompt:
-        settings = _with_probe_prompt(settings, args.prompt)
+        settings = _with_local_prompt(settings, args.prompt)
     if settings.provider.kind != "litellm":
         raise ValueError("NVIDIA NIM 설정의 provider.kind는 litellm이어야 합니다")
     _require_approved_provider(settings, config_path)
@@ -614,11 +726,9 @@ def main() -> int:
     catalog_age = (date.today() - args.catalog_verified_on).days
     if catalog_age < 0 or catalog_age > 7:
         raise ValueError("--catalog-verified-on은 오늘부터 7일 이내여야 합니다")
-    if settings.provider.pricing_verified_on is None:
-        raise ValueError("NVIDIA NIM 가격 근거 날짜가 없습니다")
-    pricing_age = (date.today() - settings.provider.pricing_verified_on).days
+    pricing_age = (date.today() - args.pricing_verified_on).days
     if pricing_age < 0 or pricing_age > 7:
-        raise ValueError("NVIDIA NIM 가격 근거 날짜는 오늘부터 7일 이내여야 합니다")
+        raise ValueError("--pricing-verified-on은 오늘부터 7일 이내여야 합니다")
 
     case_authoring_path = require_canonical_project_file(
         PROJECT_ROOT,
@@ -658,7 +768,6 @@ def main() -> int:
                 raise ValueError(f"sample_id를 찾을 수 없습니다: {args.sample_id}")
         trial_id = args.trial_id
         run_dir = output_root / run_id
-        run_dir.mkdir(parents=True, exist_ok=False)
         manifest_path = run_dir / "run-manifest.json"
         prior_manifest = None
 
@@ -675,6 +784,7 @@ def main() -> int:
         cases=target_cases,
         input_manifest=input_manifest,
         catalog_verified_on=args.catalog_verified_on,
+        pricing_verified_on=args.pricing_verified_on,
         require_clean_git=len(target_cases) > 1,
     )
     run_contract = _immutable_run_contract(
@@ -685,11 +795,22 @@ def main() -> int:
         target_cases=target_cases,
         provenance=provenance,
     )
+    if args.baseline_run:
+        _require_baseline_release(args.baseline_run, run_contract)
+    if not args.resume:
+        run_dir.mkdir(parents=True, exist_ok=False)
+    print(f"run directory: {run_dir}", flush=True)
 
     with RunFileLock(run_dir / "run.lock"):
         input_manifest_path = run_dir / "input-manifest.json"
         budget_path = run_dir / "budget.json"
         observations_path = run_dir / "observations.jsonl"
+        _preserve_prompt(
+            project_path(PROJECT_ROOT, settings.paths.prompt),
+            run_dir / "prompt.md",
+            expected_sha256=provenance["prompt_sha256"],
+            resume=args.resume,
+        )
         if args.resume:
             if prior_manifest is None or prior_manifest.get("contract") != run_contract:
                 raise ValueError("현재 Git·dataset·입력·config·budget 설정이 최초 run과 다릅니다")
@@ -721,6 +842,7 @@ def main() -> int:
                 "completed_at": None,
                 "status": "running",
                 "live_call_performed": False,
+                "prompt_file": "prompt.md",
                 "budget": budget.summary(),
             }
             atomic_write_json(manifest_path, prior_manifest)
@@ -732,6 +854,13 @@ def main() -> int:
         pending = [case for case in target_cases if case.sample_id not in completed_ids]
         if args.limit is not None:
             pending = pending[: args.limit]
+
+        calls_path = run_dir / "provider-responses.jsonl"
+        last_journal_call: dict | None = None
+
+        def record_call(record: dict) -> None:
+            nonlocal last_journal_call
+            last_journal_call = _append_call_once(calls_path, record, last_journal_call)
 
         provider = LiteLLMProvider(
             model=settings.provider.model,
@@ -768,10 +897,7 @@ def main() -> int:
                 if args.resume
                 else None
             ),
-            on_response_received=lambda record: _append_jsonl(
-                run_dir / "provider-responses.jsonl",
-                record,
-            ),
+            on_response_received=record_call,
         )
         blocked = False
         for index, case in enumerate(pending, start=1):
@@ -781,6 +907,12 @@ def main() -> int:
                 prompt_path=project_path(PROJECT_ROOT, settings.paths.prompt),
                 provider=provider,
             )[0]
+            if observation.model_error is not None:
+                last_journal_call = _append_call_once(
+                    calls_path,
+                    observation.model_call,
+                    last_journal_call,
+                )
             call_status = (
                 observation.model_call.get("provider_status") if observation.model_call else None
             )
@@ -842,7 +974,6 @@ def main() -> int:
             results=results,
         )
 
-        score_names = tuple(results[0].scores) if results else ()
         actual_models = sorted(
             {
                 str(observation.model_call["actual_model"])
@@ -850,15 +981,13 @@ def main() -> int:
                 if observation.model_call and observation.model_call.get("actual_model") is not None
             }
         )
-        model_drift_count = sum(
-            bool(observation.model_call)
-            and not observation.model_call.get("actual_model_matches_expected", False)
-            for observation in all_observations
-            if observation.model_error is None
-        )
+        model_drift_count = sum(_is_model_drift(item) for item in all_observations)
         provider_error_count = sum(
-            observation.model_error is not None for observation in all_observations
+            observation.model_error is not None and not _is_model_drift(observation)
+            for observation in all_observations
         )
+        quality_eligible_count, score_averages = _quality_score_averages(results)
+        failed_result_count = sum(result.status == "failed" for result in results)
         complete = len(all_observations) == len(target_cases)
         probe_only = len(target_cases) == 1
         status, observed_status = _classify_run_status(
@@ -867,6 +996,7 @@ def main() -> int:
             complete=complete,
             provider_error_count=provider_error_count,
             model_drift_count=model_drift_count,
+            failed_result_count=failed_result_count,
         )
         summary = {
             "artifact_schema_version": 3,
@@ -884,13 +1014,8 @@ def main() -> int:
             "record_count": len(results),
             "target_count": len(target_cases),
             "status_counts": dict(Counter(result.status for result in results)),
-            "score_averages": {
-                name: round(
-                    sum(result.scores[name] for result in results) / len(results),
-                    4,
-                )
-                for name in score_names
-            },
+            "quality_eligible_count": quality_eligible_count,
+            "score_averages": score_averages,
             "evidence_kind": "live_quality",
             "evaluation_mode": "benchmark",
             "fallback_enabled": False,
@@ -924,10 +1049,22 @@ def main() -> int:
             }
         )
         atomic_write_json(manifest_path, prior_manifest)
-        print(json.dumps(summary, ensure_ascii=False, indent=2))
-        print(f"run directory: {run_dir}")
-        return 0 if status == "complete" else 2
+        print(f"status: {status}")
+        print(f"observed status: {observed_status}")
+        if probe_only:
+            return 0 if observed_status == "complete" else 2
+        if status == "inconclusive":
+            return 2
+        return 1 if status == "fail" else 0
+
+
+def cli() -> int:
+    try:
+        return main()
+    except (LiveExecutionError, FileNotFoundError, ValueError) as exc:
+        print(f"NVIDIA NIM live 실행 차단: {exc}", file=sys.stderr)
+        return 2
 
 
 if __name__ == "__main__":
-    raise SystemExit(main())
+    raise SystemExit(cli())

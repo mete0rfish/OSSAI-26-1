@@ -19,9 +19,9 @@ baseline_route:
   api_base: https://integrate.api.nvidia.com/v1
   api_key_env: NVIDIA_NIM_API_KEY
   structured_output: prompt_only
+  sampling_parameters: explicit
   billing_basis: developer_program_free_endpoint
   pricing_source_url: https://docs.api.nvidia.com/nim/docs/product
-  pricing_verified_on: 2026-07-30
   input_cost_per_token_usd: 0.0
   output_cost_per_token_usd: 0.0
   task_budget:
@@ -43,9 +43,10 @@ candidate_route:
   api_base: https://generativelanguage.googleapis.com/v1beta
   api_key_env: GEMINI_API_KEY
   structured_output: json_schema
-  billing_basis: developer_program_free_endpoint
+  # Gemini 3.5 Flash-Lite에는 temperature/top_p/top_k를 보내지 않는다.
+  sampling_parameters: omit
+  billing_basis: free_tier
   pricing_source_url: https://ai.google.dev/gemini-api/docs/pricing
-  pricing_verified_on: 2026-08-03
   input_cost_per_token_usd: 0.0
   output_cost_per_token_usd: 0.0
   task_budget:

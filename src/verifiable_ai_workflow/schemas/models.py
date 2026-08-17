@@ -33,6 +33,8 @@ class StructuredAnswer(Contract):
                 raise ValueError("답변 보류에는 정해진 answer와 이유가 필요합니다")
             if self.evidence:
                 raise ValueError("답변 보류에는 근거를 넣지 않습니다")
+        elif self.abstention_reason is not None:
+            raise ValueError("일반 답변에는 답변 보류 이유를 넣지 않습니다")
         elif not self.evidence:
             raise ValueError("일반 답변에는 근거가 필요합니다")
         return self
@@ -64,14 +66,19 @@ class PreparedDocument(Contract):
 
 class ExpectedAnswer(Contract):
     answer: str = Field(min_length=1)
+    accepted_answers: list[str] = Field(default_factory=list)
     # 같은 정답이 반복되면 하나만 인용해도 되도록 가능한 페이지를 모두 적는다.
     pages: list[int]
     abstained: bool = False
 
     @model_validator(mode="after")
     def expected_pages_match_abstention(self) -> ExpectedAnswer:
-        if self.abstained and (self.answer != "답변 보류" or self.pages):
-            raise ValueError("답변 보류 기대값은 정해진 answer와 빈 pages가 필요합니다")
+        if self.abstained and (
+            self.answer != "답변 보류" or self.accepted_answers or self.pages
+        ):
+            raise ValueError(
+                "답변 보류 기대값은 정해진 answer, 빈 accepted_answers와 빈 pages가 필요합니다"
+            )
         if not self.abstained and not self.pages:
             raise ValueError("일반 기대값에는 가능한 근거 페이지가 필요합니다")
         return self
@@ -88,7 +95,7 @@ class EvaluationCase(Contract):
     sample_id: str = Field(min_length=1)
     family_id: str = Field(min_length=1)
     document_id: str = Field(min_length=1)
-    split: Literal["development", "validation", "challenge", "sealed_test"]
+    split: Literal["development", "validation", "challenge"]
     source: SourceMetadata
     risk_level: Literal["low", "medium", "high"]
     question: str = Field(min_length=1)

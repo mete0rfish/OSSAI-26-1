@@ -158,9 +158,6 @@ def main() -> int:
         "schema_fields": sorted(schema_fields),
         "documents": documents,
         "anomalies": anomalies,
-        "human_review": (
-            f"{len(cases)}개 기대 답과 근거 페이지는 실제 NIM 실행 전에 두 사람이 검토한다."
-        ),
     }
     output_path = project_path(PROJECT_ROOT, settings.paths.output) / "eda.json"
     output_path.parent.mkdir(parents=True, exist_ok=True)
@@ -168,7 +165,20 @@ def main() -> int:
         json.dumps(report, ensure_ascii=False, indent=2) + "\n",
         encoding="utf-8",
     )
-    print(json.dumps(report, ensure_ascii=False, indent=2))
+    print(
+        json.dumps(
+            {
+                "document_count": report["document_count"],
+                "case_count": report["case_count"],
+                "answer_type_counts": report["answer_type_counts"],
+                "label_text_check_counts": report["label_text_check_counts"],
+                "anomalies": anomalies,
+                "details": str(output_path.relative_to(PROJECT_ROOT)),
+            },
+            ensure_ascii=False,
+            indent=2,
+        )
+    )
     return 1 if anomalies else 0
 
 

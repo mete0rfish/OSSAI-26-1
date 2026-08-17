@@ -1,356 +1,418 @@
-# Week 2 실행형 실습
+# Week 2 실습 — 점수 차이를 설명 가능한 비교로 바꾸기
 
-## 목표
+## 이번 주에 배우는 것
 
-Week 1의 Nemotron을 Gemma 4로 처음 바꾸고, 실패 사례를 근거로 지시문(prompt)을
-개선한다. 이어서 같은 입력과 채점기로 NVIDIA NIM Gemma와 Google AI Studio Gemini를
-비교한다.
+Week 1에서는 AI 답을 고정 규칙으로 채점했다. Week 2에서는 점수가 달라졌을 때
+**무엇을 바꿨고, 그 결과로 어디까지 말할 수 있는지** 배운다.
 
-실습에서 한 번에 바꾸는 것은 하나다.
+수업이 끝나면 다음 세 문장을 설명할 수 있어야 한다.
 
-```text
-Nemotron → Gemma: 모델 변경 실험
-Gemma 기준 지시문 → 개선 지시문: 지시문 변경 실험
-NIM Gemma → Gemini: API 제공자와 모델 호출 경로 변경 실험
-```
+1. 한 번에 여러 조건을 바꾸면 점수 차이의 원인을 하나로 말할 수 없다.
+2. 한 사례의 성공은 가설이고, 같은 전체 사례의 새 성공과 새 실패가 검증이다.
+3. API 오류는 모델의 오답이 아니며 품질 결론을 보류해야 한다.
 
-## 1. Week 1 결과에서 출발하기
+명령을 외우는 것이 목표가 아니다. 모든 활동은
+`관찰 → 원인 가설 → 바꾼 것 → 결과 → 말할 수 없는 것`을 연결하는 데 쓴다.
 
-Week 1 결과 폴더의 `summary.json`을 열어 다음을 확인한다.
+## 1. 비교가 필요한 이유
 
-- `requested_model`이 `nvidia_nim/nvidia/nemotron-3-nano-omni-30b-a3b-reasoning`이다.
-- `record_count`와 `target_count`가 같다.
-- `provider_error_count`와 `model_drift_count`가 기록되어 있다.
-- 고정 규칙 채점 기준은 `aihub-vqa-deterministic-v2`다.
+### 무엇을 비교하는가
 
-Week 1에서는 Gemma를 실행하지 않았다. 따라서 저장된 Week 1 응답을 Gemma 결과라고 부르지
-않는다.
+바꾸기 전 조건과 결과를 **기준선(baseline)**, 비교하려고 바꾼 조건과 결과를
+**후보(candidate)**라고 부른다. 같은 문제끼리 짝을 맞추고 확인하려는 조건 외에는
+가능한 한 그대로 둔다.
 
-대표 사례를 다시 보면 Week 2에서 무엇을 개선할지 쉽게 연결할 수 있다.
-
-```bash
-uv run --locked python scripts/inspect_deterministic_scoring_case.py
-```
-
-## 2. Nemotron에서 Gemma로 바뀐 값 확인
-
-```bash
-diff -u configs/nvidia-nim.yaml configs/nvidia-nim-gemma4-baseline.yaml || true
-```
-
-| 항목 | Week 1 | Week 2 기준 |
+| 비교 | 바뀌는 것 | 이 수업에서 답할 질문 |
 | --- | --- | --- |
-| 요청 모델 | `nvidia_nim/nvidia/nemotron-3-nano-omni-30b-a3b-reasoning` | `nvidia_nim/google/gemma-4-31b-it` |
-| 예상 실제 모델 | `nvidia/nemotron-3-nano-omni-30b-a3b-reasoning` | `google/gemma-4-31b-it` |
-| 결과 폴더 | `reports/week-01-nvidia` | `reports/week-02-gemma-baseline` |
+| Gemma 기준·개선 지시문 | 지시문 묶음 | 같은 모델과 같은 40건에서 새 성공과 새 실패가 무엇인가? |
+| NIM Gemma·AI Studio Gemini | 모델·API 제공자·접속 경로·출력 방식 | 두 호출 경로 묶음의 결과가 어디서 다른가? |
 
-질문 40건, 페이지 JPEG, 기준 지시문, 출력 형식(schema)과 채점기는 그대로다. 첫 비교에서
-모델과 결과 폴더만 바뀌었음을 확인한다.
+Week 1 Nemotron과 Week 2 Gemma의 점수도 볼 수 있지만, 두 저장 실행은 실행 코드 버전도
+같지 않다. 따라서 이것은 “통제하지 않은 조건이 섞이면 원인을 좁힐 수 없다”는 반례로만
+사용한다. Gemma 지시문 비교가 이번 주의 주된 통제 실험이다.
 
-## 3. Gemma 모델 목록 사전 점검
+### 왜 평균만 보면 안 되는가
 
-다음 명령은 모델 추론을 하지 않고 NVIDIA의 현재 모델 목록만 조회한다.
+전체 통과 수가 늘어도 기존에 맞던 중요한 사례가 틀릴 수 있다. 같은 `sample_id`를
+짝지으면 다음 네 경우가 생긴다.
 
-```bash
-uv run --locked python scripts/preflight_nvidia.py \
-  --config configs/nvidia-nim-gemma4-baseline.yaml
-```
+| 기준 | 후보 | 뜻 |
+| --- | --- | --- |
+| 실패 | 성공 | 새 성공 |
+| 성공 | 실패 | 새 실패, 즉 회귀 |
+| 성공 | 성공 | 성공 유지 |
+| 실패 | 실패 | 남은 실패 |
 
-```text
-configured model: google/gemma-4-31b-it
-available now: True
-```
+한 사례는 실패 원인을 이해하고 규칙을 만드는 데 좋다. 전체 40건은 그 규칙 묶음이 다른
+문제를 망가뜨렸는지 확인하는 데 필요하다. 두 역할을 섞지 않는다.
 
-`False`면 실제 호출을 진행하지 않는다. 성공한 날짜를 수업 당일 날짜로 적는다.
+### 왜 API 오류를 따로 보는가
 
-```bash
-CATALOG_DATE=2026-08-06
-```
-
-한 사례 probe는 prompt를 수정한 상태에서도 실행할 수 있다. 이 결과는 연결과 출력 변화를
-보는 탐색 실행이며 전체 품질 근거가 아니다. 전체 40건 실행만 변경 사항이 없는 commit에서
-허용한다.
-
-## 4. Gemma 기준 지시문으로 같은 사례 5회 실행
-
-소규모 사전 실행(probe)은 흔히 dry run이라고 부르지만 여기서는 실제 API를 호출한다.
-같은 `aihub-report-r01`을 독립 실행 5회 보내 출력 형식과 답의 변동을 관찰한다.
-
-```bash
-for trial in 01 02 03 04 05; do
-  uv run --locked python scripts/run_nvidia_nim.py \
-    --config configs/nvidia-nim-gemma4-baseline.yaml \
-    --live \
-    --sample-id aihub-report-r01 \
-    --trial-id "week02-gemma-baseline-probe-${trial}" \
-    --max-requests 1 \
-    --max-input-tokens 20000 \
-    --max-output-tokens 500 \
-    --max-cost-usd 0.01 \
-    --max-wall-seconds 120 \
-    --max-retries 0 \
-    --catalog-verified-on "$CATALOG_DATE"
-done
-```
-
-`<YYYY-MM-DD>` 같은 꺾쇠 자리표시자를 입력하지 않는다. zsh에서 `<`는 파일 입력 기호로
-해석된다. 위처럼 `CATALOG_DATE` 변수에 실제 날짜를 넣으면 그대로 실행할 수 있다.
-
-각 실행 마지막에 자동 생성된 `run directory`가 출력된다. 학습자가 실행 식별자(`run_id`)를
-직접 만들 필요는 없다. 다섯 폴더에서 `observations.jsonl`과 `results.jsonl`의 첫 행을 보고
-아래 표를 채운다.
-
-| 반복 | 실제 답 | JSON 단독 반환 | 출력 형식 유효 | 숫자 일치 | 전체 성공 | 응답 시간(ms) |
-| --- | --- | ---: | ---: | ---: | ---: | ---: |
-| 01 | | | | | | |
-| 02 | | | | | | |
-| 03 | | | | | | |
-| 04 | | | | | | |
-| 05 | | | | | | |
-
-확인할 필드:
-
-- `observations.jsonl`: `raw_output`, `model_error`, `model_call.actual_model`,
-  `model_call.latency_ms`
-- `results.jsonl`: `json_object_only`, `schema_validity`, `numeric_match`,
-  `answer_correct`, `task_success`
-
-한 사례는 전체 품질을 대표하지 않으므로 `summary.json`의 실행 상태는
-`inconclusive`다. API 호출 자체가 정상인지 여부는 `observed_status=complete`,
-`provider_error_count=0`, `model_drift_count=0`으로 확인한다.
-
-## 5. 준비된 Gemma 기준 지시문 전체 결과 분석
-
-수업 전에 승인된 환경에서 만든 40건 결과를 연다. 직접 전체 실행을 승인받은 경우에만
-`git status --short` 출력이 없는지 확인하고 다음 명령을 실행한다.
-
-```bash
-uv run --locked python scripts/run_nvidia_nim.py \
-  --config configs/nvidia-nim-gemma4-baseline.yaml \
-  --live \
-  --max-requests 40 \
-  --max-input-tokens 800000 \
-  --max-output-tokens 20000 \
-  --max-cost-usd 0.01 \
-  --max-wall-seconds 7200 \
-  --max-retries 0 \
-  --catalog-verified-on "$CATALOG_DATE"
-```
-
-출력된 기준 전체 결과 폴더를 메모한다. `summary.json`에서 전체 수, API 제공자 오류,
-출력 형식 유효성 평균, 정답 허용 기준 평균과 전체 성공률을 확인한다. 그다음
-`results.jsonl`에서 필수 지표가 0인 사례를 고르고 같은 `sample_id`의 원응답을
-`observations.jsonl`에서 읽는다.
-
-## 6. 실패를 보고 지시문 직접 수정하기
-
-기준 지시문을 Git에서 제외되는 학습자 파일로 복사한다.
-
-```bash
-cp prompts/pdf-question-answer.md local-data/week-02-prompt.md
-```
-
-`local-data/week-02-prompt.md`를 열고 5회 probe에서 관찰한 실패 하나만 고친다. 채점 기준이나
-질문은 바꾸지 않는다.
-
-개선 후보는 관찰한 실패를 다음 규칙으로 다룬다.
-
-| 관찰한 실패 | 지시문 변경 |
+| 관찰 | 해석 |
 | --- | --- |
-| 답에 질문의 연도·설명이 다시 들어감 | 필요한 값·단위·기관명만 `answer`에 쓴다. |
-| 표·차트의 다른 값을 선택함 | 대상·행·열·단위를 다시 확인한다. |
-| JSON 앞뒤에 설명이나 코드 블록이 붙음 | JSON 객체 하나만 반환한다. |
-| 답이 없는데 표의 다른 값을 추측함 | 문서에서 확인할 수 없으면 정해진 형식으로 보류한다. |
+| 정상 응답이 왔지만 채점 규칙을 통과하지 못함 | 모델 답의 품질 실패 |
+| 인증 실패·시간 초과로 답이 없음 | 품질을 판단할 수 없는 실행 오류 |
+| 원 경로 실패 뒤 대체 경로가 응답함 | 서비스 연결은 확인했지만 원 모델 품질은 판단 불가 |
 
-채점기가 긴 답에서 기대 숫자만 골라내도록 느슨하게 바꾸지 않는다. 모델이 업무에 필요한
-짧은 답을 내도록 지시문을 바꾸는 실험이다.
+응답이 없는데 오답으로 세면 모델 품질과 서비스 상태가 섞인다. 반대로 API가 정상이라고
+답이 좋은 것도 아니다.
 
-수정한 지시문으로 같은 사례를 한 번 실행한다. `--prompt`에는 `local-data` 아래 파일만
-사용할 수 있으며 한 사례 probe에서만 허용된다.
+## 2. 실습 준비
+
+실행 프로젝트 저장소 최상위에서 환경을 준비한다.
 
 ```bash
-uv run --locked python scripts/run_nvidia_nim.py \
-  --config configs/nvidia-nim-gemma4-baseline.yaml \
-  --prompt local-data/week-02-prompt.md \
-  --live \
-  --sample-id aihub-report-r01 \
-  --trial-id week02-my-prompt-probe \
-  --max-requests 1 \
-  --max-input-tokens 20000 \
-  --max-output-tokens 500 \
-  --max-cost-usd 0.01 \
-  --max-wall-seconds 120 \
-  --max-retries 0 \
-  --catalog-verified-on "$CATALOG_DATE"
+uv sync --locked --dev
+
+ls -d local-data/week-02-full-runs/{gemma-baseline,gemma-improved,provider-comparison}
 ```
 
-원응답과 필수 점수를 기준 probe와 비교하고, 고친 규칙이 실제 출력에 어떤 영향을 줬는지
-한 문장으로 기록한다.
+세 폴더는 튜터가 수업 전에 실제 API로 만든 **이론 설명용 저장 결과**다. 하나라도 없으면
+남은 파일로 수치를 추정하지 말고 튜터에게 요청한다. 이 중 고정된 개선 수치 예시는 뒤에서
+가설과 회귀를 설명하는 데 쓴다. AIHub 이용 조건과 실제 응답 때문에 이 폴더들은 Git commit에
+포함되지 않으며, 튜터가 허용된 과정 자료 묶음으로 따로 전달한다.
 
-준비된 개선안과도 비교한다.
+이 실습은 AIHub 샘플의 경제전망 보고서와 보도자료를 사용한다. 질문 40건 가운데 36건은
+문서에서 답을 찾고, 4건은 근거가 없을 때 답변을 보류하는 문제다. 원본 이용 조건, 두 문서와
+질문의 구성, PDF를 API용 JPEG로 준비하는 방법은 [AIHub 데이터 안내](aihub-data.md)에 있다.
+
+튜터 자료 묶음에 준비본이 없다면 AIHub 안내대로 원본을 넣고 다음 두 명령을 한 번 실행한다.
+이 단계는 API를 호출하지 않는다. 이미 준비본을 받았다면 다시 만들지 않고 `ls`만 확인한다.
 
 ```bash
-diff -u local-data/week-02-prompt.md prompts/pdf-question-answer-gemma4.md || true
+uv run --locked python scripts/prepare_documents.py
+uv run --locked python scripts/prepare_cases.py
+ls local-data/aihub/cases.jsonl local-data/aihub/prepared/*/manifest.json
+```
+
+각 학습자는 자기 지시문(prompt)으로 40건 전체를 한 번 실행한다. 여러 사람이 같은 장비를
+쓸 때 파일이 섞이지 않도록 본인의 영문·숫자 과정 별칭을 정한다. 별칭에는 영문, 숫자,
+`.`, `_`, `-`만 쓴다.
+
+```bash
+STUDENT_ALIAS=student01
+STUDENT_DIR="local-data/week-02-students/$STUDENT_ALIAS"
+STUDENT_PROMPT="$STUDENT_DIR/prompt.md"
+mkdir -p "$STUDENT_DIR"
+
+test -e "$STUDENT_PROMPT" || cp prompts/pdf-question-answer.md "$STUDENT_PROMPT"
+```
+
+`student01`은 반드시 본인에게 배정된 고유 별칭으로 바꾼다. 이후 실습도 같은
+터미널에서 이어 실행해 이 변수들을 유지한다.
+
+학습 기록이 없다면 한 번만 복사한다.
+
+```bash
+test -e local-data/learning-progress.md ||
+  cp templates/week-02-learning-note.md local-data/learning-progress.md
+```
+
+## 3. 사례 한 건에서 가설 만들기
+
+먼저 개선 결과를 열지 않고 Gemma 기준 지시문의 `aihub-report-r01`만 읽는다.
+
+```bash
+rg '"sample_id":"aihub-report-r01"' \
+  local-data/week-02-full-runs/gemma-baseline/results.jsonl |
+  rg -o '"answer":"[^"]*"|"answer_correct":[0-9.]+|"task_success":[0-9.]+'
+```
+
+이 사례의 기준 답은 `71.6%`다. 모델은 숫자를 포함했지만 설명 문장까지
+`answer`에 넣었다. 구조와 근거는 맞았지만 업무 계약보다 답의 범위가 넓어
+`answer_correct=0`이었다.
+
+결과를 보고 다음을 기록한다.
+
+1. **관찰:** 어느 출력이 어떤 규칙에서 실패했는가?
+2. **원인 가설:** 모델이 왜 그 형태로 답했을 가능성이 있는가?
+3. **변경 제안:** 질문·출력 형식·채점기는 그대로 두고 지시문 규칙 하나를 어떻게 바꿀까?
+4. **예측:** 같은 사례가 어떻게 달라지고, 다른 사례에는 어떤 새 실패가 생길 수 있을까?
+
+이 사례에서는 다음 가설을 사용한다.
+
+> 숫자를 묻는 질문에는 값과 단위만 answer에 쓴다.
+
+미리 준비한 두 응답을 열어 이 가설이 한 사례에서 어떤 차이를 만드는지 확인한다.
+
+```bash
 uv run --locked python scripts/inspect_prompt_comparison_case.py
 ```
 
-저장 응답 비교는 현재 모델 품질 주장이 아니라 코드 학습용이다.
+이 명령은 API를 호출하지 않으며 Git에 포함된 고정 응답(`test_only`)을 사용한다.
+후보의 `71.6%`와 통과 결과는 **가설을 설명하는 시험용 예시**다. 학습자가 수정할
+파일의 실행 결과가 아니다.
 
-## 7. 개선 지시문 확인과 준비된 전체 결과 비교
-
-먼저 같은 사례 한 건으로 출력이 의도대로 바뀌었는지 확인한다.
+위에서 만든 개인 파일을 열고 기준 지시문에 이 규칙을 추가한다.
 
 ```bash
-uv run --locked python scripts/run_nvidia_nim.py \
-  --config configs/nvidia-nim-gemma4.yaml \
-  --live \
-  --sample-id aihub-report-r01 \
-  --trial-id week02-gemma-improved-probe \
-  --max-requests 1 \
-  --max-input-tokens 20000 \
-  --max-output-tokens 500 \
-  --max-cost-usd 0.01 \
-  --max-wall-seconds 120 \
-  --max-retries 0 \
-  --catalog-verified-on "$CATALOG_DATE"
+diff -u prompts/pdf-question-answer.md "$STUDENT_PROMPT" || true
 ```
 
-한 건이 성공해도 지시문을 채택하지 않는다. 전체 40건은 수업 전에 승인된 환경에서 한 번
-실행한 기준·개선 결과를 사용한다. 직접 전체 실행을 승인받은 경우에만 아래 명령을 사용한다.
+`diff`는 무엇을 바꿨는지만 증명한다. 고정 예시를 개인 수정의 성공 증거로 쓰지
+않는다. 개인 수정의 실제 효과는 5절의 본인 40건 실행과 저장 baseline 비교로 확인한다.
+
+## 4. 저장 예시에서 새 성공과 새 실패 이해하기
+
+튜터가 준비한 개선 지시문에는 방금 작성한 규칙 외에도 날짜·기관·목록 규칙이 들어 있다.
+따라서 아래 결과는 **준비된 지시문 묶음 전체**의 효과이며 한 줄 규칙의 단독 효과가 아니다.
 
 ```bash
-uv run --locked python scripts/run_nvidia_nim.py \
-  --config configs/nvidia-nim-gemma4.yaml \
-  --live \
-  --max-requests 40 \
-  --max-input-tokens 800000 \
-  --max-output-tokens 20000 \
-  --max-cost-usd 0.01 \
-  --max-wall-seconds 7200 \
-  --max-retries 0 \
-  --catalog-verified-on "$CATALOG_DATE"
-```
-
-터미널에 출력된 기준·개선 전체 결과 폴더를 변수에 그대로 붙여 넣는다.
-
-```bash
-BASELINE_RUN_DIR="reports/week-02-gemma-baseline/runs/기준-전체-폴더명"
-CANDIDATE_RUN_DIR="reports/week-02-gemma-improved/runs/개선-전체-폴더명"
+STORED_EXAMPLE_COMPARISON="$STUDENT_DIR/stored-example-comparison.json"
 
 uv run --locked python scripts/compare_gemma_prompts.py \
-  --baseline-run "$BASELINE_RUN_DIR" \
-  --candidate-run "$CANDIDATE_RUN_DIR" \
+  --baseline-run local-data/week-02-full-runs/gemma-baseline \
+  --candidate-run local-data/week-02-full-runs/gemma-improved \
   --rescore-current \
-  --output reports/week-02/gemma-prompt-comparison.json
+  --output "$STORED_EXAMPLE_COMPARISON" >/dev/null
+
+rg -n -A 5 '"classification_counts"' "$STORED_EXAMPLE_COMPARISON"
+rg -n '"(invalid_reasons|automated_status)"' "$STORED_EXAMPLE_COMPARISON"
+
+rg -n '"(abstention_correct|evidence_coverage|task_success)"' local-data/week-02-full-runs/gemma-{baseline,improved}/summary.json
+
+for SAMPLE_ID in aihub-report-r29 aihub-report-r01 aihub-report-r07; do
+  rg -n -A 6 "\"sample_id\": \"$SAMPLE_ID\"" "$STORED_EXAMPLE_COMPARISON"
+done
 ```
 
-`gemma-prompt-comparison.json`에서 다음을 읽는다.
+세 사례는 서로 다른 역할을 한다.
 
-- `metric_deltas.task_success`: 전체 성공률 차이
-- `new_success_ids`: 기준 실패에서 개선 성공으로 바뀐 사례
-- `new_failure_ids`: 새로 실패한 사례
-- `not_comparable_ids`: API 오류 등으로 비교할 수 없는 사례
-- `automated_status`: 자동 통과·실패·판단 보류
+| 사례 | 관찰 목적 |
+| --- | --- |
+| `r29` | 두 지시문에서 성공이 유지됐는가? |
+| `r01` | 기준 실패가 후보 성공으로 바뀌었는가? |
+| `r07` | 개선 뒤에도 왜 실패가 남았는가? |
 
-평균이 올라도 새 실패나 비교 불가 사례가 있으면 자동 채택하지 않는다.
+두 폴더는 튜터가 실제 API로 만든 품질 증거(`live_quality`)다. 지시문 변경의 원리를
+설명하기 위해 고정한 저장 예시의 결과는 다음과 같다. 개인 실행과 비교할 같은-release
+baseline은 5절에서 별도로 지정한다.
 
-## 8. 두 API 제공자가 공유할 지시문 확인
+- 기준 3/40 → 개선 25/40
+- 새 성공 22건, 새 실패 0건, 남은 실패 15건
+- `task_success`는 올랐지만 `abstention_correct`와
+  `evidence_coverage`는 낮아짐
 
-Gemma 전용 지시를 다른 모델에 그대로 보내면 모델과 지시문이 동시에 달라진다. 두 API
-제공자 비교에는 모델 이름에 의존하지 않는 공통 지시문을 사용한다.
+따라서 “이번 40건에서는 정한 비교 조건을 통과했다”고 말할 수 있다. 다음 주제까지
+일반화해서는 안 된다.
+
+- 이 지시문이 모든 문서와 질문에서 더 좋다는 주장
+- 한 줄 규칙만으로 22건이 좋아졌다는 주장
+- 한 번의 확률적 실행이 반복되어도 같다는 주장
+
+## 5. 내 지시문으로 같은 40건 전체 실행하기
+
+### 5-1. 승인과 같은 release baseline 확인
+
+이 절은 선택 활동이 아니다. 튜터가 외부 이미지 전송, 계정 할당량과 반 전체 합산 상한을
+승인한 뒤, 각 학습자가 실행한다. 튜터의 화면 시연은 `r01` 한 건뿐이지만, 학습자의
+품질 비교는 본인 지시문으로 40건을 모두 호출해야 한다.
+
+튜터가 **현재 수업 release와 같은 clean commit에서 수업 전에 만든 baseline 폴더**의 정확한
+경로를 알려 준다. 다음 예시의 값은 튜터가 알려 준 경로로 바꾼다.
 
 ```bash
-diff -u prompts/pdf-question-answer-gemma4.md prompts/pdf-question-answer-json-only.md || true
+WEEK2_BASELINE_RUN=local-data/week-02-full-runs/gemma-release-baseline-RELEASE_SHA
 ```
 
-`configs/week-02-live.yaml`을 열어 다음을 확인한다.
+뒤의 실행 명령은 이 폴더가 40건 완결본인지, clean Git에서 만들어졌는지, 현재 Git SHA와
+같은지 요청 전에 검사한다. 현재 저장소에 tracked 변경이 있어도 요청 전에 차단한다. 개인
+지시문은 `local-data` 아래라 Git 상태를 더럽히지 않는다.
 
-- 두 호출 경로가 같은 질문 40건, 페이지 JPEG와 공통 지시문을 쓴다.
-- 출력 형식과 고정 규칙 채점기가 같다.
-- 기준은 NVIDIA NIM Gemma, 후보는 Google AI Studio Gemini다.
-- 두 호출 경로는 서로 다른 API 키와 접속 주소(endpoint)를 쓴다.
-
-## 9. Gemma와 Gemini 세 사례 비교
-
-`.env`에 두 API 키가 있어야 한다. 결과 폴더 이름에 쓸 짧은 실행 표식은 학습자가 정한다.
-이 값은 모델 실행 식별자가 아니라 로컬 폴더가 겹치지 않게 하는 이름이다.
+`.env`가 없다면 `.env.example`을 복사하고 본인의 `NVIDIA_NIM_API_KEY`를 입력한다. key는 제출하거나
+화면에 출력하지 않는다. 모델 목록과 [NVIDIA NIM 이용 안내](https://docs.api.nvidia.com/nim/docs/product)의
+가격·이용 조건을 실제로 확인한 오늘 날짜만 기록한다.
 
 ```bash
-RUN_TAG=class-01
+test -e .env || cp .env.example .env
 ```
 
-같은 표식을 이미 사용했다면 `class-02`처럼 바꾼다.
+```bash
+unset CATALOG_DATE PRICING_DATE
+uv run --locked python scripts/preflight_nvidia.py \
+  --config configs/nvidia-nim-gemma4-baseline.yaml &&
+  CATALOG_DATE=$(date +%F) &&
+  PRICING_DATE="$CATALOG_DATE"
+```
+
+사전 점검이 `available now: True`가 아니거나 확인 날짜를 사실대로 기록할 수 없으면
+날짜 변수는 비어 있고 뒤의 실행기도 호출 전에 멈춘다. 사전 점검의 모델 목록 metadata 조회
+1회는 아래 40회의 모델 추론 요청과 별도다.
+
+### 5-2. 40건 실행과 자동 폴더 찾기
+
+아래 명령은 재시도 없이 최대 40회 요청한다. 전체 상한은 입력 800,000 token, 출력 20,000
+token, 비용 안전장치 0.01달러, 7,200초다. `$0.01`은 예상 청구액이 아니라 설정 오류나
+예상 밖 사용량을 상한 전에 막는 안전장치다. 실제 이용 조건과 가격은 실행 당일 확인한다.
+완료 실행의 실제 시도 수도 40회다.
+
+| 옵션 | 이 실습에서 하는 일 |
+| --- | --- |
+| `--config` | 모델·데이터·출력 형식을 기준 실행과 같게 둔다. |
+| `--prompt` | 비교에서 바꾸는 유일한 조건인 개인 지시문을 지정한다. |
+| `--baseline-run` | 같은 release의 40건 기준 실행이 맞는지 요청 전에 확인한다. |
+| `--live`, `--trial-id` | 실제 호출임을 명시하고 실행을 고유하게 식별한다. |
+| `--max-*`, 확인 날짜 | 요청·token·비용·시간을 승인 범위 안에 묶는다. |
 
 ```bash
-uv run --locked python scripts/compare_live_provider_routes.py \
-  --live --probe-sample-id aihub-report-r01 \
-  --max-requests 2 --max-input-tokens 40000 --max-output-tokens 1000 \
-  --max-retries 0 --max-cost-usd 0.01 --max-wall-seconds 240 \
+TRIAL_ID="week02-${STUDENT_ALIAS}-$(date -u +%Y%m%dT%H%M%SZ)"
+RUN_LOG="$STUDENT_DIR/${TRIAL_ID}.log"
+
+uv run --locked python scripts/run_nvidia_nim.py \
+  --config configs/nvidia-nim-gemma4-baseline.yaml --prompt "$STUDENT_PROMPT" \
+  --baseline-run "$WEEK2_BASELINE_RUN" --live --trial-id "$TRIAL_ID" \
+  --max-requests 40 --max-retries 0 \
+  --max-input-tokens 800000 --max-output-tokens 20000 \
+  --max-cost-usd 0.01 --max-wall-seconds 7200 \
   --catalog-verified-on "$CATALOG_DATE" \
-  --output "reports/week-02-live/probe-r01-${RUN_TAG}"
-
-uv run --locked python scripts/compare_live_provider_routes.py \
-  --live --probe-sample-id aihub-report-r03 \
-  --max-requests 2 --max-input-tokens 40000 --max-output-tokens 1000 \
-  --max-retries 0 --max-cost-usd 0.01 --max-wall-seconds 240 \
-  --catalog-verified-on "$CATALOG_DATE" \
-  --output "reports/week-02-live/probe-r03-${RUN_TAG}"
-
-uv run --locked python scripts/compare_live_provider_routes.py \
-  --live --probe-sample-id aihub-report-r31 \
-  --max-requests 2 --max-input-tokens 40000 --max-output-tokens 1000 \
-  --max-retries 0 --max-cost-usd 0.01 --max-wall-seconds 240 \
-  --catalog-verified-on "$CATALOG_DATE" \
-  --output "reports/week-02-live/probe-r31-${RUN_TAG}"
+  --pricing-verified-on "$PRICING_DATE" 2>&1 | tee "$RUN_LOG"
 ```
 
-각 폴더의 `summary.json`에서 두 API 제공자가 각각 한 응답을 남겼고, API 오류·출력 형식
-오류·실제 처리 모델 불일치가 모두 0인지 확인한다.
+터미널의 `status`는 답의 품질, `observed status`는 40건 수집 완료 여부다.
+`status=fail`이어도 `observed status=complete`이면 오답을 포함한 40건이
+정상적으로 저장된 것이다. API 오류나 중단이 생겨도 이미 만든 폴더는 지우지 않는다.
 
-## 10. 준비된 Gemma와 Gemini 전체 결과 비교
-
-40건씩 총 80회 호출은 수업 전에 승인된 환경에서 한 번 수행한다. 학습자는 결과를 분석한다.
-직접 전체 실행을 승인받은 경우에만 다음 명령을 사용한다.
+`tee`로 보존한 터미널 출력에서 runner가 표시한 실제 폴더를 그대로 가져온다.
 
 ```bash
-uv run --locked python scripts/compare_live_provider_routes.py \
-  --live \
-  --max-requests 80 --max-input-tokens 1600000 --max-output-tokens 40000 \
-  --max-retries 0 --max-cost-usd 0.01 --max-wall-seconds 3600 \
-  --catalog-verified-on "$CATALOG_DATE" \
-  --output "reports/week-02-live/full-${RUN_TAG}"
+LEARNER_RUN_DIR=$(sed -n 's/^run directory: //p' "$RUN_LOG" | tail -n 1)
+printf 'learner run directory: %s\n' "$LEARNER_RUN_DIR"
 ```
 
-결과를 다음 순서로 읽는다.
+실행기는 폴더를 만든 직후 이 경로를 출력한다. 값이 비어 있으면 호출 전에 차단된 것이므로
+경로를 추측하지 말고 로그를 튜터에게 보여 준다.
 
-1. `summary.json`: 두 호출 경로의 응답·오류·전체 상태
-2. `comparison.json`: 성공률 차이와 사례별 변화
-3. `baseline-results.jsonl`, `candidate-results.jsonl`: 점수와 실패 이유
-4. `baseline-observations.jsonl`, `candidate-observations.jsonl`: 실제 원응답
-5. `baseline-provenance.json`, `candidate-provenance.json`: 토큰·비용·실제 처리 모델
+### 5-3. 원본과 완전성 확인
 
-`comparison.json`의 `new_success`, `new_failure`, `unchanged`, `not_comparable` 건수를 적고,
-공통 실패 한 건과 두 모델의 답이 달라진 한 건을 직접 읽는다. 상대 비교의 자동 상태가
-`pass`여도 절대 실패가 남아 있으면 출시 승인이 아니다.
+이번 실행의 네 핵심 파일은 다음 위치에 있다.
 
-## 11. API 오류를 오답과 분리하기
-
-실제 API를 다시 호출하지 않고 저장된 장애 상황을 실행한다.
+| 파일 | 위치 | 확인할 것 |
+| --- | --- | --- |
+| 실제 지시문 | `$LEARNER_RUN_DIR/prompt.md` | 내 수정본과 정확히 같은가? |
+| 원응답 | `$LEARNER_RUN_DIR/observations.jsonl` | 40개 응답·오류 기록이 있는가? |
+| 채점 결과 | `$LEARNER_RUN_DIR/results.jsonl` | 같은 40개 사례의 점수가 있는가? |
+| 전체 요약 | `$LEARNER_RUN_DIR/summary.json` | `observed_status`가 `complete`인가? |
 
 ```bash
-uv run --locked python scripts/evaluate_recorded_provider_routes.py
+rg -n '"(status|observed_status|record_count|target_count|provider_error_count|model_drift_count)"' \
+  "$LEARNER_RUN_DIR/summary.json"
+
+rg -n '"(request_count|attempt_count|actual_input_tokens|actual_output_tokens|actual_cost_usd|wall_seconds)"' \
+  "$LEARNER_RUN_DIR/summary.json"
 ```
 
-`reports/week-02/faults.json`에서 인증 실패, 요청 제한, 시간 초과와 대체 경로 성공이 모델
-오답으로 집계되지 않는지 확인한다. 저장 상황을 썼으므로 이 결과는 시험 전용
-증거(`test_only`)다.
+| 확인 항목 | 완료 기준 | 뜻 |
+| --- | --- | --- |
+| 수집 상태 | `observed_status=complete` | API 오류 없이 40건을 모두 모았다. |
+| 사례 수 | `record_count=target_count=40` | 일부 사례만 본 결과가 아니다. |
+| 호출 수 | `request_count=attempt_count=40` | 재시도 없이 사례마다 한 번 호출했다. |
+| 모델 상태 | `provider_error_count=model_drift_count=0` | 접속 실패나 다른 모델 응답을 품질 점수에 섞지 않았다. |
+| 답의 품질 | `status=pass` 또는 `fail` | 수집 완료와 정답 품질은 서로 다른 판정이다. |
+
+`observed_status=complete`가 실행 완결 판정이다. 이 값이 `complete`이면
+`status=fail`이어도 40건 원본은 완결된 품질 증거다. API 오류나 실제
+처리 모델 불일치가 있으면 `observed_status`는 `complete`가 아니므로 품질
+비교를 진행하지 않는다. 다음 절의 비교기가 네 파일, 저장한 지시문, 40건, 요청·attempt와
+token·비용·시간 상한을 다시 검사하므로 문서에서 긴 검증 코드를 반복하지 않는다.
+
+### 5-4. 저장 baseline과 내 후보 비교
+
+비교 결과도 학생별 고유 경로에 쓴다. 비교기는 같은 model, 40개 `sample_id`, 요청
+상한, 입력 manifest, lockfile, workflow, dataset, schema와 scorer hash를 확인한다.
+`--rescore-current`는 저장 점수를 그대로 믿지 않고 두 실행의 원응답을 현재 저장소의
+같은 고정 규칙 채점기로 다시 계산한다.
+
+```bash
+COMPARISON_OUTPUT="reports/week-02/students/$STUDENT_ALIAS/${TRIAL_ID}-baseline-vs-candidate.json"
+
+uv run --locked python scripts/compare_gemma_prompts.py \
+  --baseline-run "$WEEK2_BASELINE_RUN" \
+  --candidate-run "$LEARNER_RUN_DIR" \
+  --rescore-current \
+  --output "$COMPARISON_OUTPUT" >/dev/null
+
+rg -n -A 5 '"classification_counts"' "$COMPARISON_OUTPUT"
+rg -n '"(invalid_reasons|automated_status)"' "$COMPARISON_OUTPUT"
+printf 'comparison file: %s\n' "$COMPARISON_OUTPUT"
+```
+
+`invalid_reasons`가 빈 목록일 때만 지시문만 바꾼 비교로 해석한다.
+`automated_status=fail`은 새 실패가 있거나 성공률이 오르지 않았다는 유효한 결과일 수
+있다. 반면 `invalid_reasons`가 하나라도 있으면 비교 상태는
+`inconclusive`다. 특히 저장 baseline이 다른 commit이나 runner에서 만들어졌다면
+개인 지시문의 효과라고 주장하지 말고 같은 release baseline을 튜터에게 요청한다.
+
+2026-08-17 실제 리허설에서는 baseline 2/40에서 개인 후보 23/40으로 바뀌었고,
+새 성공 21건·새 실패 0건이었다. `invalid_reasons=[]`, `automated_status=pass`였지만, 개인이
+작성한 지시문에 따라 수치는 달라질 수 있다.
+
+## 6. 호출 경로 묶음 비교하기
+
+이번에는 한 요소만 바꾸지 않는다.
+
+| 경로 | 함께 달라지는 것 |
+| --- | --- |
+| NVIDIA NIM Gemma | Gemma 모델, NIM 접속 경로와 출력 설정 |
+| Google AI Studio Gemini | Gemini 모델, AI Studio 접속 경로와 출력 설정 |
+
+저장된 비교 결과와 새 실패 두 건을 연다.
+
+```bash
+rg -n '"(record_count|provider_error_count|task_success_rate|invalid_comparison_reasons|automated_status)"' \
+  local-data/week-02-full-runs/provider-comparison/comparison.json
+rg -n -A 5 '"classification_counts"' \
+  local-data/week-02-full-runs/provider-comparison/comparison.json
+
+rg -n -A 8 '"sample_id": "aihub-press-p0(3|5)"' \
+  local-data/week-02-full-runs/provider-comparison/comparison.json
+```
+
+현재 정본에서 NIM Gemma가 24/40, Gemini가 31/40을 통과했다. 새 성공은 9건,
+새 실패는 `p03`, `p05` 두 건이다. 두 경로 모두 API 오류와 실제 모델
+불일치는 0건이었다. 4절의 개선 Gemma 25/40과 이 절의 NIM Gemma 24/40은 서로 다른 시점과
+목적의 저장 실행이므로 같은 결과가 아니다.
+
+이 결과만으로 “Gemini 모델이 17.5%p 더 우수하다”고 말할 수 없다. 모델뿐 아니라 제공자,
+접속 경로와 출력 방식이 함께 달랐기 때문이다. 말할 수 있는 것은 “이 40건과 이 실행
+조건에서 두 호출 경로 묶음의 결과가 이렇게 달랐다”까지다.
+
+`p03`과 `p05`는 의미상 타당해 보여도 허용 문자열과 달라 실패했다.
+짧은 답의 허용 표현은 사람이 보완할 수 있지만, 긴 설명의 모든 표현을 문자열로 등록하기는
+어렵다. Week 3에서는 이 한계를 사람의 상대 비교와 LLM Judge로 다룬다.
+
+## 7. 강의자 시연 — 반 전체 대표 live 한 건
+
+승인 조건이 모두 맞을 때만 튜터가 별도로 `r01` 한 건을 실행한다. 전체 명령과 안전
+확인은 강의자용 Week 2 runbook에만 둔다. 이 시연은 원응답과 저장 형식을 함께 보는 용도이며,
+각 학습자의 40건 실행을 대신하지 않는다.
+
+실행했다면 다음 세 가지만 확인한다.
+
+1. 실제 사용한 지시문과 원응답이 저장됐는가?
+2. API 오류인지 품질 실패인지 구분할 수 있는가?
+3. 한 건의 좋은 답을 전체 품질 개선으로 일반화하지 않았는가?
+
+시연이 승인되지 않으면 강의자 요청 0건이 정상이다. 학습자 40건 실행 승인은 별도로 확인한다.
+학습자 실행 승인이 없거나 provider 장애로 완결되지 않으면 저장 예시 분석은 계속하되, 개인
+비교 완료로 표시하지 않고 승인된 보충 실행 시간을 정한다.
+
+## 8. 제출 — 세 줄로 주장 범위 정리하기
+
+`local-data/learning-progress.md`의 Week 2 표를 다음 형식으로 채운다.
+
+| 비교 | 바뀐 것 | 관찰 | 말할 수 없는 것 |
+| --- | --- | --- | --- |
+| 저장 baseline·내 prompt 40건 |  |  |  |
+| NIM Gemma·AI Studio Gemini |  |  |  |
+| 품질 실패·API 오류 |  |  |  |
 
 ## 완료 기준
 
-- Week 1의 Nemotron에서 Week 2의 Gemma로 바뀐 설정 세 가지를 설명할 수 있다.
-- 같은 Gemma 사례를 기준 지시문으로 5회 실행하고 출력 변동을 표로 정리했다.
-- 실패 사례를 보고 학습자 지시문을 직접 수정하고 같은 사례를 다시 실행했다.
-- 준비된 기준·개선 지시문 전체 결과에서 새 성공, 새 실패와 비교 불가 사례를 찾았다.
-- 공통 지시문으로 Gemma와 Gemini를 같은 조건에서 비교했다.
-- API 오류와 출력 형식 오류, 정답 실패를 서로 다른 상태로 설명할 수 있다.
-- AIHub 실습에서는 모델 기반 채점기 없이 고정 규칙 채점기를 쓰는 이유를 설명할 수 있다.
+- 한 사례의 개선과 40건의 회귀 비교가 다른 역할임을 설명했다.
+- 학생별 지시문과 비교 결과를 학생별 고유 경로에 저장했다.
+- 내 40건 `summary.json`의 `observed_status=complete`와 40개
+  `observations`·`results`를 확인했다.
+- 같은 release baseline 비교의 `invalid_reasons`가 비어 있는지 확인하고 내
+  새 성공·새 실패·남은 실패를 기록했다.
+- 호출 경로 묶음의 차이를 모델 하나의 효과라고 주장하지 않았다.
+- API 오류를 모델 오답으로 세지 않았고, 말할 수 없는 범위를 표에 적었다.

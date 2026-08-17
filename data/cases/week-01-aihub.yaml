@@ -22,7 +22,11 @@ cases:
     document_id: MI2_240819_TY1_0012
     risk_level: low
     question: 2016년 말 은행 가계대출 중 변동금리 비중은 얼마인가요?
-    expected: {answer: "71.6%", pages: [1], abstained: false}
+    expected:
+      answer: "71.6%"
+      accepted_answers: ["약 71.6 퍼센트입니다."]
+      pages: [1]
+      abstained: false
     tags: [aihub, report, grounded-answer]
   - sample_id: aihub-report-r02
     document_id: MI2_240819_TY1_0012

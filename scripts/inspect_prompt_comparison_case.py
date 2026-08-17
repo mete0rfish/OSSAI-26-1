@@ -2,19 +2,25 @@
 
 from __future__ import annotations
 
+import argparse
 import json
-import sys
 from pathlib import Path
 
 from verifiable_ai_workflow.data.dataset import build_cases
-from verifiable_ai_workflow.evaluation.scoring import PASS_REQUIREMENTS, score_output
+from verifiable_ai_workflow.evaluation.scoring import (
+    DIAGNOSTIC_METRICS,
+    PASS_REQUIREMENTS,
+    score_output,
+)
 from verifiable_ai_workflow.providers.recorded import RecordedProvider
 
 PROJECT_ROOT = Path(__file__).resolve().parents[1]
 PREPARED_ROOT = PROJECT_ROOT / "local-data/aihub/prepared"
 CASE_ID = "aihub-report-r01"
 BASELINE_FIXTURE = PROJECT_ROOT / "data/recorded/week-02-gemma-baseline-responses.jsonl"
-CANDIDATE_OVERLAY = PROJECT_ROOT / "data/scenarios/week-02-route-b-overrides.jsonl"
+CANDIDATE_OVERLAY = (
+    PROJECT_ROOT / "data/scenarios/week-02-prompt-candidate-overrides.jsonl"
+)
 
 
 def _result(raw_response: str, case) -> dict:
@@ -23,6 +29,8 @@ def _result(raw_response: str, case) -> dict:
         "raw_response": raw_response,
         "parsed_answer": parsed_answer.model_dump() if parsed_answer else None,
         "required_scores": {name: scores[name] for name in PASS_REQUIREMENTS},
+        "diagnostic_scores": {name: scores[name] for name in DIAGNOSTIC_METRICS},
+        "diagnostic_reasons": {name: reasons[name] for name in DIAGNOSTIC_METRICS},
         "task_success": scores["task_success"],
         "failed_requirements": [
             {"metric": name, "reason": reasons[name]}
@@ -39,13 +47,11 @@ def main() -> int:
         if item.sample_id == CASE_ID
     )
     manifest_path = PREPARED_ROOT / case.document_id / "manifest.json"
-    if not manifest_path.is_file():
-        print(
-            "준비된 문서가 없습니다. 먼저 "
-            "`uv run --locked python scripts/prepare_documents.py`를 실행하세요.",
-            file=sys.stderr,
-        )
-        return 2
+    manifest = (
+        json.loads(manifest_path.read_text(encoding="utf-8"))
+        if manifest_path.is_file()
+        else None
+    )
 
     baseline_raw = RecordedProvider(BASELINE_FIXTURE).generate(case.sample_id, [])
     candidate_raw = RecordedProvider(
@@ -76,9 +82,8 @@ def main() -> int:
         ],
         "input": {
             "question": case.question,
-            "page_image_count": len(
-                json.loads(manifest_path.read_text(encoding="utf-8"))["pages"]
-            ),
+            "prepared_input_status": "prepared" if manifest else "not_prepared",
+            "page_image_count": len(manifest["pages"]) if manifest else None,
         },
         "expected": case.expected.model_dump(),
         "baseline": {
@@ -90,6 +95,10 @@ def main() -> int:
             **candidate,
         },
         "classification": classification,
+        "diagnostic_note": (
+            "json_object_only는 출력 습관을 확인하는 진단값이며 "
+            "task_success 통과 조건에 포함되지 않습니다."
+        ),
         "evidence_kind": "test_only",
     }
     print(json.dumps(payload, ensure_ascii=False, indent=2))
@@ -97,4 +106,5 @@ def main() -> int:
 
 
 if __name__ == "__main__":
+    argparse.ArgumentParser(description=__doc__).parse_args()
     raise SystemExit(main())

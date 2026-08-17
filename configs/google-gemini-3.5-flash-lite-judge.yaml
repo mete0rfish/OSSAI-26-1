@@ -1,0 +1,40 @@
+artifact_schema_version: 2
+
+paths:
+  case_authoring: data/opencqa/week-03-selection.yaml
+  cases: local-data/opencqa/week-03-cases.jsonl
+  prompt: configs/week-03-judge-rubric.yaml
+  raw_documents: local-data/opencqa/images
+  prepared_documents: local-data/opencqa/images
+  output: reports/week-03-judge
+
+documents:
+  render_dpi: 150
+  model_image_max_bytes: 175000
+  model_image_max_width: 1024
+
+provider:
+  kind: litellm
+  model: gemini/gemini-3.5-flash-lite
+  expected_actual_model: gemini-3.5-flash-lite
+  api_base: https://generativelanguage.googleapis.com/v1beta
+  api_key_env: GEMINI_API_KEY
+  structured_output: json_schema
+  sampling_parameters: omit
+  billing_basis: free_tier
+  pricing_source_url: https://ai.google.dev/gemini-api/docs/pricing
+  input_cost_per_token_usd: 0.0
+  output_cost_per_token_usd: 0.0
+
+limits:
+  max_requests: 240
+  requests_per_minute: 15
+  max_retries: 1
+  retry_initial_seconds: 5
+  max_cost_usd: 0.01
+  max_input_tokens: 1200000
+  max_output_tokens: 120000
+  max_wall_seconds: 10800
+  request_input_token_ceiling: 5000
+  request_output_token_ceiling: 500
+  request_timeout_seconds: 120

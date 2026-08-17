@@ -1,0 +1,11 @@
+# 후보 A/B는 같은 NIM Gemma가 기준·개선 prompt로 만든 실제 답이다. 어느 쪽이 기준인지
+# improved인지, OpenCQA 사람 기대 답과 Gemini 결과는 이 파일을 잠글 때까지 보지 않는다.
+# `candidate_set_sha256`은 inspect 명령이 보여 준 현재 후보 세트 값을 그대로 적는다.
+# reason은 "차트 사실 → 후보 차이 → label" 순서로 쓴다.
+
+pair_number: CHANGE_ME
+pair_id: CHANGE_ME
+candidate_set_sha256: CHANGE_ME
+reviewer_id: CHANGE_ME
+label: CHANGE_ME
+reason: "CHANGE_ME"

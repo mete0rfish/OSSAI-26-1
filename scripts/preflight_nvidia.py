@@ -11,6 +11,8 @@ from verifiable_ai_workflow.config import load_project_env, load_settings, requi
 
 PROJECT_ROOT = Path(__file__).resolve().parents[1]
 CATALOG_URL = "https://integrate.api.nvidia.com/v1/models"
+
+
 def main() -> int:
     parser = argparse.ArgumentParser(description="NVIDIA NIM 모델 목록 사전 확인")
     parser.add_argument("--config", default="configs/nvidia-nim.yaml")

@@ -6,7 +6,7 @@ from __future__ import annotations
 import argparse
 import math
 import sys
-from datetime import date
+from datetime import UTC, date, datetime
 from pathlib import Path
 
 from pydantic import ValidationError
@@ -120,6 +120,17 @@ def _require_clean_git(probe_sample_id: str | None) -> bool:
     return probe_sample_id is None
 
 
+def _default_output_dir(
+    probe_sample_id: str | None,
+    *,
+    now: datetime | None = None,
+) -> Path:
+    started_at = now or datetime.now(UTC)
+    label = f"probe-{probe_sample_id}" if probe_sample_id else "full"
+    timestamp = started_at.astimezone(UTC).strftime("%Y%m%dT%H%M%S%fZ")
+    return PROJECT_ROOT / "reports/week-02-live" / f"{label}-{timestamp}"
+
+
 def main() -> int:
     parser = argparse.ArgumentParser(description="Week 2 두 API 제공자 실제 비교")
     parser.add_argument("--config", default=CANONICAL_CONFIG)
@@ -131,7 +142,11 @@ def main() -> int:
     parser.add_argument("--max-cost-usd", type=float, required=True)
     parser.add_argument("--max-wall-seconds", type=float, required=True)
     parser.add_argument("--catalog-verified-on", type=date.fromisoformat, required=True)
-    parser.add_argument("--output", required=True)
+    parser.add_argument("--pricing-verified-on", type=date.fromisoformat, required=True)
+    parser.add_argument(
+        "--output",
+        help="생략하면 실행 종류와 UTC 시각으로 reports/week-02-live 아래에 만듭니다",
+    )
     parser.add_argument(
         "--probe-sample-id",
         choices=PROBE_SAMPLE_IDS,
@@ -158,12 +173,20 @@ def main() -> int:
             max_cost_usd=args.max_cost_usd,
             max_wall_seconds=args.max_wall_seconds,
         )
+        output_dir = (
+            Path(args.output)
+            if args.output and Path(args.output).is_absolute()
+            else PROJECT_ROOT / args.output
+            if args.output
+            else _default_output_dir(args.probe_sample_id)
+        )
         execution = run_week2_live(
             PROJECT_ROOT,
             config_path=config_path,
             caps=caps,
             catalog_verified_on=args.catalog_verified_on,
-            output_dir=args.output,
+            pricing_verified_on=args.pricing_verified_on,
+            output_dir=output_dir,
             probe_sample_id=args.probe_sample_id,
             require_clean_git=_require_clean_git(args.probe_sample_id),
         )
@@ -178,6 +201,7 @@ def main() -> int:
         return 2
 
     print(execution.summary.model_dump_json(indent=2))
+    print(f"run directory: {output_dir}")
     if args.probe_sample_id is not None:
         return 0 if _probe_succeeded(execution) else 2
     if execution.summary.automated_status == "inconclusive":

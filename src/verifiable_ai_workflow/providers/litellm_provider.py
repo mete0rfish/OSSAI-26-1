@@ -12,11 +12,72 @@ from typing import Any, Literal
 os.environ.setdefault("LITELLM_LOCAL_MODEL_COST_MAP", "True")
 
 import litellm
+from pydantic import BaseModel
 
 from ..config import require_api_key
 from ..live_execution import LiveBudget, LiveBudgetCaps, LiveBudgetExceeded
 from ..model_identity import canonicalize_litellm_actual_model
 from ..schemas import StructuredAnswer
+
+_GEMINI_FLASH_LITE = "gemini/gemini-3.5-flash-lite"
+
+# LiteLLM 1.93 predates this stable model. Register only the capabilities the
+# course uses so image + JSON Schema requests do not silently fall back to a
+# prompt-only schema.
+litellm.register_model(
+    {
+        _GEMINI_FLASH_LITE: {
+            "litellm_provider": "gemini",
+            "mode": "chat",
+            "max_input_tokens": 1_048_576,
+            "max_output_tokens": 65_536,
+            "input_cost_per_token": 0.0,
+            "output_cost_per_token": 0.0,
+            "cache_creation_input_token_cost": 0.0,
+            "cache_read_input_token_cost": 0.0,
+            "supports_response_schema": True,
+            "supports_system_messages": True,
+            "supports_vision": True,
+        }
+    }
+)
+
+_original_gemini_param_mapper = litellm.GoogleAIStudioGeminiConfig.map_openai_params
+_original_gemini_param_mapper = getattr(
+    _original_gemini_param_mapper,
+    "_openup_original",
+    _original_gemini_param_mapper,
+)
+
+
+def _map_gemini_params_without_deprecated_sampling(
+    self: Any,
+    non_default_params: dict,
+    optional_params: dict,
+    model: str,
+    drop_params: bool,
+) -> dict:
+    mapped = _original_gemini_param_mapper(
+        self,
+        non_default_params,
+        optional_params,
+        model,
+        drop_params,
+    )
+    if model == "gemini-3.5-flash-lite":
+        for name in ("temperature", "top_p", "top_k"):
+            mapped.pop(name, None)
+    return mapped
+
+
+# ponytail: remove this narrow compatibility patch when the pinned LiteLLM
+# release both maps Flash-Lite and stops injecting deprecated sampling fields.
+_map_gemini_params_without_deprecated_sampling._openup_original = (  # type: ignore[attr-defined]
+    _original_gemini_param_mapper
+)
+litellm.GoogleAIStudioGeminiConfig.map_openai_params = (  # type: ignore[method-assign]
+    _map_gemini_params_without_deprecated_sampling
+)
 
 
 class LiteLLMProvider:
@@ -47,6 +108,7 @@ class LiteLLMProvider:
         temperature: float = 0.0,
         top_p: float | None = None,
         seed: int | None = None,
+        sampling_parameters: Literal["explicit", "omit"] = "explicit",
         thinking_mode: Literal["default", "disabled"] = "default",
         thinking_parameter: Literal["thinking", "chat_template"] = "thinking",
         max_images_per_prompt: int | None = None,
@@ -91,6 +153,8 @@ class LiteLLMProvider:
             raise ValueError("top_p는 0 초과 1 이하의 유한수여야 합니다")
         if seed is not None and seed < 0:
             raise ValueError("seed는 0 이상이어야 합니다")
+        if sampling_parameters not in {"explicit", "omit"}:
+            raise ValueError("sampling_parameters는 explicit 또는 omit이어야 합니다")
         if thinking_mode not in {"default", "disabled"}:
             raise ValueError("thinking_mode는 default 또는 disabled여야 합니다")
         if thinking_parameter not in {"thinking", "chat_template"}:
@@ -132,6 +196,7 @@ class LiteLLMProvider:
         self.temperature = temperature
         self.top_p = top_p
         self.seed = seed
+        self.sampling_parameters = sampling_parameters
         self.thinking_mode = thinking_mode
         self.thinking_parameter = thinking_parameter
         self.max_images_per_prompt = max_images_per_prompt
@@ -160,7 +225,13 @@ class LiteLLMProvider:
     def attempt_count(self) -> int:
         return self.budget.attempt_count
 
-    def generate(self, sample_id: str, messages: list[dict[str, Any]]) -> Any:
+    def generate(
+        self,
+        sample_id: str,
+        messages: list[dict[str, Any]],
+        *,
+        response_schema: type[BaseModel] | None = StructuredAnswer,
+    ) -> Any:
         if self._halted_reason is not None:
             blocked = RuntimeError(
                 f"이 provider run은 이전 응답 검증 실패로 중단됐습니다: {self._halted_reason}"
@@ -177,14 +248,15 @@ class LiteLLMProvider:
             "model": self.model,
             "messages": messages,
             "api_key": self._api_key,
-            "temperature": self.temperature,
             "max_tokens": self.request_output_token_ceiling,
             "num_retries": 0,
         }
-        if self.top_p is not None:
-            request_base["top_p"] = self.top_p
-        if self.seed is not None:
-            request_base["seed"] = self.seed
+        if self.sampling_parameters == "explicit":
+            request_base["temperature"] = self.temperature
+            if self.top_p is not None:
+                request_base["top_p"] = self.top_p
+            if self.seed is not None:
+                request_base["seed"] = self.seed
         if self.thinking_mode == "disabled":
             request_base["extra_body"] = (
                 {"thinking": {"type": "disabled"}}
@@ -193,13 +265,13 @@ class LiteLLMProvider:
             )
         if self.api_base:
             request_base["api_base"] = self.api_base
-        if self.structured_output == "json_schema":
+        if self.structured_output == "json_schema" and response_schema is not None:
             request_base["response_format"] = {
                 "type": "json_schema",
                 "json_schema": {
-                    "name": "structured_answer",
+                    "name": response_schema.__name__,
                     "strict": True,
-                    "schema": StructuredAnswer.model_json_schema(),
+                    "schema": response_schema.model_json_schema(),
                 },
             }
         response = None
@@ -251,7 +323,7 @@ class LiteLLMProvider:
                     retry_count=retry_count,
                     budget_violations=wall_violations,
                 )
-                if not self._is_rate_limit_error(exc) or attempt == self.max_retries:
+                if not self._is_transient_error(exc) or attempt == self.max_retries:
                     raise RuntimeError(f"{type(exc).__name__}: {error_message}") from exc
                 retry_count = attempt + 1
                 try:
@@ -472,9 +544,12 @@ class LiteLLMProvider:
             "budget": self.budget.summary(),
             "response_received_at": None,
             "request_parameters": {
-                "temperature": self.temperature,
-                "top_p": self.top_p,
-                "seed": self.seed,
+                "sampling_parameters": self.sampling_parameters,
+                "temperature": (
+                    self.temperature if self.sampling_parameters == "explicit" else None
+                ),
+                "top_p": self.top_p if self.sampling_parameters == "explicit" else None,
+                "seed": self.seed if self.sampling_parameters == "explicit" else None,
                 "thinking_mode": self.thinking_mode,
                 "thinking_parameter": self.thinking_parameter,
                 "max_images_per_prompt": self.max_images_per_prompt,
@@ -629,5 +704,6 @@ class LiteLLMProvider:
         self._last_attempt_started = self._clock()
 
     @staticmethod
-    def _is_rate_limit_error(exc: Exception) -> bool:
-        return getattr(exc, "status_code", None) == 429 or "429" in str(exc)
+    def _is_transient_error(exc: Exception) -> bool:
+        status = getattr(exc, "status_code", None)
+        return status == 429 or (isinstance(status, int) and 500 <= status < 600)

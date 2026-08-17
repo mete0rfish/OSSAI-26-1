@@ -27,7 +27,6 @@ class ComparisonContract(ComparisonModel):
     output_schema_sha256: str = Field(pattern=r"^[0-9a-f]{64}$")
     scorer_sha256: str = Field(pattern=r"^[0-9a-f]{64}$")
     lockfile_sha256: str = Field(pattern=r"^[0-9a-f]{64}$")
-    temperature: float
     max_output_tokens: int = Field(gt=0)
     tool_policy: Literal["none"] = "none"
 
@@ -47,6 +46,7 @@ class RouteDescriptor(ComparisonModel):
     logical_model: str = Field(min_length=1)
     requested_model: str = Field(min_length=1)
     expected_actual_model: str = Field(min_length=1)
+    sampling_parameters: Literal["explicit", "omit"] = "explicit"
 
 
 class CaseDiff(ComparisonModel):
@@ -209,7 +209,6 @@ def compare_routes(
     candidate_route: RouteDescriptor,
     baseline_contract: ComparisonContract,
     candidate_contract: ComparisonContract,
-    max_regression_percentage_points: float = 0.0,
 ) -> ComparisonReport:
     """두 route를 비교하고 자동 상태와 문제별 변화를 함께 반환한다."""
 
@@ -239,7 +238,11 @@ def compare_routes(
         )
         for sample_id in all_ids
     ]
-    counts = dict(Counter(diff.classification for diff in diffs))
+    counter = Counter(diff.classification for diff in diffs)
+    counts = {
+        name: counter[name]
+        for name in ("new_success", "new_failure", "unchanged", "not_comparable")
+    }
     baseline_aggregate = _aggregate(baseline)
     candidate_aggregate = _aggregate(candidate)
     if (
@@ -258,9 +261,7 @@ def compare_routes(
     elif not live_evidence:
         status = "inconclusive"
         reason = "저장 응답은 코드 리허설일 뿐 실제 route 품질 증거가 아닙니다."
-    elif counts.get("new_failure", 0) > 0 or (
-        delta is not None and delta < -max_regression_percentage_points
-    ):
+    elif counts.get("new_failure", 0) > 0 or (delta is not None and delta < 0):
         status = "fail"
         reason = "새 실패 또는 허용 범위를 넘는 품질 하락이 있습니다."
     else:
