@@ -1,0 +1,6 @@
+optimizer:
+  iterations: 1
+  minibatch_size: 1
+  pareto_size: 2
+  patience: 1
+  random_seed: 42

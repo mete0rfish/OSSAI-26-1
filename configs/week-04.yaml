@@ -1,0 +1,27 @@
+# 멘티가 직접 바꾸는 값이 아니다. 멘토가 수업 전에 검증한 저장 결과 두 폴더를 지정한다.
+# 폴더 이름에 Git SHA가 들어가도 멘티가 실행할 명령에는 입력하지 않는다.
+class_materials:
+  label: 2026-08-19 실제 재검증 결과
+  prompt_optimization_dir: local-data/week-04-full-runs/optimization-4b53815
+  image_response_dir: local-data/week-04-full-runs/robustness-4b53815
+
+optimizer:
+  iterations: 2
+  minibatch_size: 4
+  pareto_size: 3
+  patience: 2
+  random_seed: 42
+
+robustness:
+  - variant_id: rotate-2
+    transformation: rotate_2
+    intended_behavior: invariance
+  - variant_id: jpeg-60
+    transformation: jpeg_60
+    intended_behavior: invariance
+  - variant_id: crop-left
+    transformation: crop_left
+    intended_behavior: graceful_degradation
+  - variant_id: occlude-answer
+    transformation: occlude_answer
+    intended_behavior: graceful_degradation
